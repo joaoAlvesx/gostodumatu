@@ -75,11 +75,11 @@ const ProductGrid = () => {
   };
 
   return (
-    <section id="produtos" className="py-24 bg-gradient-earth">
+    <section id="produtos" className="py-16 sm:py-24 bg-gradient-white">
       <div className="container mx-auto px-4">
-        <div className="text-center mb-16">
+        <div className="text-center mb-10 sm:mb-16">
           <Badge variant="secondary" className="mb-4">Nossos Produtos</Badge>
-          <h2 className="text-4xl md:text-5xl font-artisan font-bold text-foreground mb-6">
+          <h2 className="text-3xl sm:text-4xl md:text-5xl font-artisan font-bold text-foreground mb-4 sm:mb-6">
             Sabores do<span className="text-primary"> Nosso Chão</span>
           </h2>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
@@ -204,7 +204,7 @@ const ProductGrid = () => {
             const imagesArray = getImagesArray(selectedProduct.image);
 
             return (
-              <DialogContent className="max-w-xl bg-card/95 border border-border/80 text-foreground rounded-lg p-0 overflow-hidden shadow-2xl">
+              <DialogContent className="max-w-xl w-[calc(100%-2rem)] bg-card/95 border border-border/80 text-foreground rounded-lg p-0 overflow-hidden shadow-2xl">
                 <div className="relative bg-muted">
                   <img 
                     src={imagesArray[currentImgIdx] || ""} 
@@ -234,7 +234,7 @@ const ProductGrid = () => {
                   )}
                 </div>
 
-                <div className="p-8 space-y-4">
+                <div className="p-5 sm:p-8 space-y-4">
                   <div className="flex items-center gap-2 flex-wrap">
                     {selectedProduct.isNew && <Badge className="bg-primary text-primary-foreground">Novo</Badge>}
                     <Badge variant="secondary">{selectedProduct.category}</Badge>
@@ -250,17 +250,17 @@ const ProductGrid = () => {
                     )}
                   </div>
 
-                  <DialogTitle className="font-artisan text-3xl font-bold text-foreground">
+                  <DialogTitle className="font-artisan text-2xl sm:text-3xl font-bold text-foreground">
                     {selectedProduct.name}
                   </DialogTitle>
 
-                  <DialogDescription className="text-muted-foreground text-base leading-relaxed pt-2">
+                  <DialogDescription className="text-muted-foreground text-sm sm:text-base leading-relaxed pt-2">
                     {selectedProduct.description || "Sem descrição disponível para este produto da roça."}
                   </DialogDescription>
 
-                  <div className="flex items-center justify-between pt-6 border-t border-border/50">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-6 border-t border-border/50">
                     <div className="flex items-baseline gap-2">
-                      <span className="text-3xl font-bold text-primary">{formatPrice(selectedProduct.price)}</span>
+                      <span className="text-2xl sm:text-3xl font-bold text-primary">{formatPrice(selectedProduct.price)}</span>
                       {selectedProduct.originalPrice && (
                         <span className="text-base text-muted-foreground line-through">
                           {formatPrice(selectedProduct.originalPrice)}
@@ -270,7 +270,7 @@ const ProductGrid = () => {
 
                     <Button 
                       size="lg"
-                      className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground w-full sm:w-auto"
                       onClick={() => {
                         handleAddToCart(selectedProduct);
                         setSelectedProduct(null); 

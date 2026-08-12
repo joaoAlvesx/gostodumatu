@@ -27,15 +27,15 @@ const About = () => {
   ];
 
   return (
-    <section id="sobre" className="py-24 bg-background">
+    <section id="sobre" className="py-16 sm:py-24 bg-background">
       <div className="container mx-auto px-4">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center">
           {/* Content */}
           <div>
             <Badge variant="secondary" className="mb-4">
               Nossa História
             </Badge>
-            <h2 className="text-4xl md:text-5xl font-artisan font-bold text-foreground mb-6">
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-artisan font-bold text-foreground mb-4 sm:mb-6">
               Do Produtor
               <span className="text-primary"> pra Sua Mesa</span>
             </h2>
@@ -80,7 +80,7 @@ const About = () => {
             </div>
 
             {/* Stats */}
-            <div className="mt-12 grid grid-cols-3 gap-6 text-center">
+            <div className="mt-10 sm:mt-12 grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 text-center">
               <div>
                 <div className="text-3xl font-bold text-primary font-artisan">100%</div>
                 <div className="text-sm text-muted-foreground">Artesanal</div>

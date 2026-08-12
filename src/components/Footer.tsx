@@ -15,8 +15,8 @@ const Footer = () => {
 
   return (
     <footer className="bg-gradient-earth border-t border-border">
-      <div className="container mx-auto px-4 py-16">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+      <div className="container mx-auto px-4 py-12 sm:py-16">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
           {/* Brand */}
           <div className="space-y-4">
             <h3 className="text-2xl font-artisan font-bold text-foreground">
@@ -95,11 +95,11 @@ const Footer = () => {
         <Separator className="my-8" />
 
         {/* Bottom */}
-        <div className="flex flex-col md:flex-row items-center justify-between space-y-4 md:space-y-0">
+        <div className="flex flex-col md:flex-row items-center justify-between space-y-4 md:space-y-0 gap-2 text-center md:text-left">
           <div className="text-sm text-muted-foreground">
             © {currentYear} Gostodumatu. Todos os direitos reservados.
           </div>
-          <div className="flex items-center space-x-6 text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
             <a href="#" className="hover:text-primary transition-organic">
               Política de Privacidade
             </a>

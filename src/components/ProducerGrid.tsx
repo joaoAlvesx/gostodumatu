@@ -23,11 +23,11 @@ const ProducerGrid = () => {
   if (producers.length === 0) return null;
 
   return (
-    <section id="produtores" className="py-20 bg-background border-t border-border/50">
+    <section id="produtores" className="py-14 sm:py-20 bg-background border-t border-border/50">
       <div className="container mx-auto px-4">
-        <div className="text-center mb-16">
+        <div className="text-center mb-10 sm:mb-16">
           <Badge variant="secondary" className="mb-4">Quem Faz Nossos Sabores</Badge>
-          <h2 className="text-4xl md:text-5xl font-artisan font-bold text-foreground mb-6">
+          <h2 className="text-3xl sm:text-4xl md:text-5xl font-artisan font-bold text-foreground mb-4 sm:mb-6">
             Nossos <span className="text-primary">Produtores Locais</span>
           </h2>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
