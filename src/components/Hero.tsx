@@ -86,12 +86,7 @@ const Hero = () => {
         </div>
       </div>
 
-      {/* Decorative Elements */}
-      <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 cursor-pointer" onClick={() => handleScrollTo("produtos")}>
-        <div className="animate-bounce">
-          <ArrowRight className="h-6 w-6 text-background/60 rotate-90" />
-        </div>
-      </div>
+        
     </section>
   );
 };

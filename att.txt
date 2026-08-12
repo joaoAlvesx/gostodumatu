@@ -1,0 +1,3 @@
+Super Admin adicionar foto na hora de cadastrar o produtor 
+tentar fazer redimensionamento da logo automatica 
+Admin conseguir alterar produtior
