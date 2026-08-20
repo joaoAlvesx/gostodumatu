@@ -8,7 +8,13 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "local:start": "npx --yes supabase@latest start",
+    "local:setup": "node scripts/setup-local.mjs",
+    "local:reset": "npx --yes supabase@latest db reset",
+    "local:stop": "npx --yes supabase@latest stop",
+    "types:local": "npx --yes supabase@latest gen types typescript --local > src/integrations/supabase/types.ts",
+    "validate:phase1": "node scripts/validate-phase1-local.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

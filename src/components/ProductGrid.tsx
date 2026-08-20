@@ -57,9 +57,7 @@ const ProductGrid = () => {
     const imageString = Array.isArray(product.image) ? product.image[0] : product.image;
 
     toggleWishlist({
-      id: product.id,
-      name: product.name,
-      price: product.price,
+      ...product,
       image: imageString
     });
 

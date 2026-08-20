@@ -1,4 +1,6 @@
-import { supabase } from "@/lib/products";
+import { supabase } from "@/integrations/supabase/client";
+import type { Tables, TablesUpdate } from "@/integrations/supabase/types";
+import { deleteCatalogImages } from "@/lib/storage";
 
 export type Producer = {
   id: string;
@@ -10,145 +12,95 @@ export type Producer = {
   userId?: string;
 };
 
-// Carrega todos os produtores
+export type CreateProducerInput = {
+  name: string;
+  email: string;
+  password: string;
+  location?: string;
+  bio?: string;
+};
+
+function toProducer(producer: Tables<"producers">): Producer {
+  return {
+    id: producer.id,
+    name: producer.name,
+    slug: producer.slug,
+    bio: producer.bio ?? "",
+    image: producer.image ?? "",
+    location: producer.location ?? "",
+    userId: producer.user_id ?? undefined,
+  };
+}
+
 export async function loadProducers(): Promise<Producer[]> {
   try {
-    const { data, error } = await supabase
-      .from('producers')
-      .select('*')
-      .order('name', { ascending: true });
-
+    const { data, error } = await supabase.from("producers").select("*").order("name");
     if (error) throw error;
-    if (!data) return [];
-
-    return data.map((p: any) => ({
-      id: p.id,
-      name: p.name,
-      slug: p.slug,
-      bio: p.bio || "",
-      image: p.image || "",
-      location: p.location || "",
-      userId: p.user_id,
-    }));
+    return (data ?? []).map(toProducer);
   } catch (error) {
     console.error("Erro ao carregar produtores:", error);
     return [];
   }
 }
 
-// Carrega produtor pelo SLUG (para a página pública)
 export async function loadProducerBySlug(slug: string): Promise<Producer | null> {
   try {
-    const { data, error } = await supabase
-      .from('producers')
-      .select('*')
-      .eq('slug', slug)
-      .single();
-
+    const { data, error } = await supabase.from("producers").select("*").eq("slug", slug).single();
     if (error) throw error;
-    if (!data) return null;
-
-    return {
-      id: data.id,
-      name: data.name,
-      slug: data.slug,
-      bio: data.bio || "",
-      image: data.image || "",
-      location: data.location || "",
-      userId: data.user_id,
-    };
+    return toProducer(data);
   } catch (error) {
     console.error("Erro ao carregar produtor por slug:", error);
     return null;
   }
 }
 
-// Carrega produtor vinculado ao ID do usuário do Supabase logado
 export async function loadProducerByUserId(userId: string): Promise<Producer | null> {
   try {
-    const { data, error } = await supabase
-      .from('producers')
-      .select('*')
-      .eq('user_id', userId)
-      .single();
-
+    const { data, error } = await supabase.from("producers").select("*").eq("user_id", userId).single();
     if (error) throw error;
-    if (!data) return null;
-
-    return {
-      id: data.id,
-      name: data.name,
-      slug: data.slug,
-      bio: data.bio || "",
-      image: data.image || "",
-      location: data.location || "",
-      userId: data.user_id,
-    };
+    return toProducer(data);
   } catch (error) {
     console.error("Erro ao buscar loja do usuário logado:", error);
     return null;
   }
 }
 
-// Cria a conta do produtor no Supabase Auth e salva na tabela 'producers'
-export async function createProducerWithAccount(data: {
-  name: string;
-  email: string;
-  password: string;
-  location?: string;
-  bio?: string;
-  image?: string;
-}): Promise<{ success: boolean; message?: string }> {
+export async function createProducerWithAccount(
+  input: CreateProducerInput,
+): Promise<{ success: boolean; producer?: Producer; message?: string }> {
   try {
-    // 1. Cria o usuário no Supabase Auth
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: data.email,
-      password: data.password,
-    });
-
-    if (authError) throw authError;
-    if (!authData.user) throw new Error("Não foi possível criar o usuário no sistema.");
-
-    // 2. Salva os dados da loja na tabela 'producers' vinculados ao user_id gerado
-    const slug = data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
-    
-    const { error: dbError } = await supabase
-      .from('producers')
-      .insert({
-        name: data.name,
-        slug,
-        location: data.location || "",
-        bio: data.bio || "",
-        image: data.image || "",
-        user_id: authData.user.id,
-      });
-
-    if (dbError) throw dbError;
+    const { data, error } = await supabase.functions.invoke<{ producer: Tables<"producers"> }>(
+      "create-producer",
+      { body: input },
+    );
+    if (error) throw error;
+    if (!data?.producer) throw new Error("A função não retornou o produtor criado.");
 
     window.dispatchEvent(new Event("producers:updated"));
-    return { success: true };
-  } catch (error: any) {
+    return { success: true, producer: toProducer(data.producer) };
+  } catch (error) {
     console.error("Erro ao criar conta de produtor:", error);
-    return { success: false, message: error.message || "Falha ao cadastrar produtor" };
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Falha ao cadastrar produtor",
+    };
   }
 }
 
-// Salva/Edita informações do produtor
-export async function saveProducer(producer: Omit<Producer, 'id'> & { id?: string }): Promise<boolean> {
+export async function saveProducer(
+  producer: Omit<Producer, "id"> & { id?: string },
+): Promise<boolean> {
   try {
     const payload = {
       ...(producer.id ? { id: producer.id } : {}),
       name: producer.name,
-      slug: producer.slug || producer.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, ''),
-      bio: producer.bio,
-      image: producer.image,
-      location: producer.location,
-    };
+      slug: producer.slug || slugify(producer.name),
+      bio: producer.bio ?? null,
+      image: producer.image ?? null,
+      location: producer.location ?? null,
+    } satisfies TablesUpdate<"producers">;
 
-    const { error } = await supabase
-      .from('producers')
-      .upsert(payload, { onConflict: 'id' });
-
+    const { error } = await supabase.from("producers").upsert(payload, { onConflict: "id" });
     if (error) throw error;
 
     window.dispatchEvent(new Event("producers:updated"));
@@ -159,15 +111,25 @@ export async function saveProducer(producer: Omit<Producer, 'id'> & { id?: strin
   }
 }
 
-// Deleta produtor
 export async function deleteProducer(id: string): Promise<boolean> {
   try {
-    const { error } = await supabase
-      .from('producers')
-      .delete()
-      .eq('id', id);
+    const { data: producer, error: readError } = await supabase
+      .from("producers")
+      .select("image")
+      .eq("id", id)
+      .single();
+    if (readError) throw readError;
 
+    const { error } = await supabase.from("producers").delete().eq("id", id);
     if (error) throw error;
+
+    if (producer.image) {
+      try {
+        await deleteCatalogImages([producer.image]);
+      } catch (storageError) {
+        console.error("Produtor removido, mas houve falha ao limpar sua imagem:", storageError);
+      }
+    }
 
     window.dispatchEvent(new Event("producers:updated"));
     return true;
@@ -175,4 +137,13 @@ export async function deleteProducer(id: string): Promise<boolean> {
     console.error("Erro ao deletar produtor:", error);
     return false;
   }
+}
+
+function slugify(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
 }

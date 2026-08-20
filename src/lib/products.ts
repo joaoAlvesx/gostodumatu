@@ -1,9 +1,8 @@
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from "@/integrations/supabase/client";
+import type { TablesInsert } from "@/integrations/supabase/types";
+import { deleteCatalogImages } from "@/lib/storage";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export { supabase };
 
 export type Product = {
   id: string;
@@ -14,39 +13,31 @@ export type Product = {
   category: string;
   description: string;
   isNew?: boolean;
-  producerId?: string; // NOVO: Vínculo opcional com o produtor
+  producerId?: string;
 };
 
-// Carrega os produtos (pode filtrar por produtor específico se passar o producerId)
+function normalizeImages(value: string[]): string[] {
+  return value.filter((item) => typeof item === "string");
+}
+
 export async function loadProducts(producerId?: string): Promise<Product[]> {
   try {
-    let query = supabase
-      .from('products')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (producerId) {
-      query = query.eq('producer_id', producerId);
-    }
+    let query = supabase.from("products").select("*").order("created_at", { ascending: false });
+    if (producerId) query = query.eq("producer_id", producerId);
 
     const { data, error } = await query;
-
     if (error) throw error;
 
-    if (!data || data.length === 0) {
-      return [];
-    }
-
-    return data.map((p: any) => ({
-      id: p.id,
-      name: p.name,
-      price: Number(p.price),
-      originalPrice: p.original_price ? Number(p.original_price) : undefined,
-      image: p.image || [],
-      category: p.category,
-      description: p.description || "",
-      isNew: p.is_new,
-      producerId: p.producer_id,
+    return (data ?? []).map((product) => ({
+      id: product.id,
+      name: product.name,
+      price: Number(product.price),
+      originalPrice: product.original_price == null ? undefined : Number(product.original_price),
+      image: normalizeImages(product.image),
+      category: product.category,
+      description: product.description ?? "",
+      isNew: product.is_new,
+      producerId: product.producer_id ?? undefined,
     }));
   } catch (error) {
     console.error("Erro ao carregar produtos do Supabase:", error);
@@ -54,27 +45,23 @@ export async function loadProducts(producerId?: string): Promise<Product[]> {
   }
 }
 
-// Salva ou edita um produto no Supabase
 export async function saveProducts(product: Product): Promise<boolean> {
   try {
     const databaseData = {
       id: product.id,
       name: product.name,
       price: product.price,
-      original_price: product.originalPrice,
+      original_price: product.originalPrice ?? null,
       image: product.image,
       category: product.category,
       description: product.description,
-      is_new: product.isNew,
-      producer_id: product.producerId || null,
-    };
+      is_new: product.isNew ?? false,
+      producer_id: product.producerId ?? null,
+    } satisfies TablesInsert<"products">;
 
-    const { error } = await supabase
-      .from('products')
-      .upsert(databaseData, { onConflict: 'id' });
-
+    const { error } = await supabase.from("products").upsert(databaseData, { onConflict: "id" });
     if (error) throw error;
-    
+
     window.dispatchEvent(new Event("products:updated"));
     return true;
   } catch (error) {
@@ -83,20 +70,28 @@ export async function saveProducts(product: Product): Promise<boolean> {
   }
 }
 
-// Deleta um produto
 export async function deleteProductFromDatabase(id: string): Promise<boolean> {
   try {
-    const { error } = await supabase
-      .from('products')
-      .delete()
-      .eq('id', id);
+    const { data: product, error: readError } = await supabase
+      .from("products")
+      .select("image")
+      .eq("id", id)
+      .single();
+    if (readError) throw readError;
 
+    const { error } = await supabase.from("products").delete().eq("id", id);
     if (error) throw error;
+
+    try {
+      await deleteCatalogImages(normalizeImages(product.image));
+    } catch (storageError) {
+      console.error("Produto removido, mas houve falha ao limpar suas imagens:", storageError);
+    }
 
     window.dispatchEvent(new Event("products:updated"));
     return true;
   } catch (error) {
-    console.error("Erro ao deletar produto no Supabase:", error);
+    console.error("Erro ao deletar produto do Supabase:", error);
     return false;
   }
 }

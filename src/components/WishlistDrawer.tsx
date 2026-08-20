@@ -6,14 +6,22 @@ import { useWishlist } from "@/context/WishlistContext";
 import { useCart } from "@/context/CartContext";
 import { formatPrice } from "@/lib/products";
 import { useToast } from "@/hooks/use-toast";
+import type { Product as WishlistProduct } from "@/context/WishlistContext";
+import type { Product as CatalogProduct } from "@/lib/products";
 
 const WishlistDrawer = () => {
   const { wishlist, isOpen, closeWishlist, removeItem } = useWishlist();
   const { addItem, openCart } = useCart();
   const { toast } = useToast();
 
-  const handleAddToCart = (product: any) => {
-    addItem(product);
+  const handleAddToCart = (product: WishlistProduct) => {
+    const catalogProduct: CatalogProduct = {
+      ...product,
+      image: Array.isArray(product.image) ? product.image : product.image ? [product.image] : [],
+      category: product.category ?? "",
+      description: product.description ?? "",
+    };
+    addItem(catalogProduct);
     toast({ title: "Adicionado ao carrinho!", description: product.name });
     openCart();
   };
@@ -34,7 +42,7 @@ const WishlistDrawer = () => {
             wishlist.map((product) => (
               <div key={product.id} className="flex gap-3 pb-4 border-b border-border items-center">
                 <img
-                  src={product.image}
+                  src={Array.isArray(product.image) ? product.image[0] : product.image}
                   alt={product.name}
                   className="w-20 h-20 object-cover rounded-md"
                 />

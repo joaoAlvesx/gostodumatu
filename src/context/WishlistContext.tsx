@@ -5,8 +5,12 @@ export interface Product {
   id: string;
   name: string;
   price: number;
-  image?: string;
+  image?: string | string[];
   description?: string;
+  category?: string;
+  originalPrice?: number;
+  isNew?: boolean;
+  producerId?: string;
 }
 
 interface WishlistContextType {

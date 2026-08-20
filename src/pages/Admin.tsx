@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import type { User } from "@supabase/supabase-js";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +12,14 @@ import { ArrowLeft, Plus, Trash2, Pencil, X, LogOut, Store, Package, UserCheck, 
 import { loadProducts, saveProducts, formatPrice, deleteProductFromDatabase, supabase, type Product } from "@/lib/products";
 import { loadProducers, createProducerWithAccount, loadProducerByUserId, saveProducer, deleteProducer, type Producer } from "@/lib/producers";
 import { useToast } from "@/hooks/use-toast";
+import { currentUserIsSuperAdmin } from "@/lib/auth";
+import {
+  deleteCatalogImages,
+  uploadProducerImage,
+  uploadProductImages,
+  validateImageFile,
+  type PendingImage,
+} from "@/lib/storage";
 
 
 
@@ -32,14 +41,21 @@ const emptyProducerCreateForm = {
   password: "",
   location: "",
   bio: "",
-  image: "",
 };
+
+async function cleanupCatalogImages(urls: string[]): Promise<void> {
+  try {
+    await deleteCatalogImages(urls);
+  } catch (error) {
+    console.error("Não foi possível remover imagens antigas do Storage:", error);
+  }
+}
 
 const Admin = () => {
   const { toast } = useToast();
   
   // Estados de Sessão / Usuário Logado
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentProducer, setCurrentProducer] = useState<Producer | null>(null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   
@@ -56,36 +72,14 @@ const Admin = () => {
   const [productForm, setProductForm] = useState(emptyProductForm);
   const [producerForm, setProducerForm] = useState(emptyProducerCreateForm);
   const [myStoreForm, setMyStoreForm] = useState<Producer | null>(null);
+  const [pendingProductImages, setPendingProductImages] = useState<PendingImage[]>([]);
+  const [originalProductImages, setOriginalProductImages] = useState<string[]>([]);
+  const [producerCreateImage, setProducerCreateImage] = useState<File | null>(null);
+  const [myStoreImage, setMyStoreImage] = useState<File | null>(null);
   
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
 
-  // Verifica a sessão atual no Supabase Auth
-const checkSession = async () => {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session?.user) {
-    setCurrentUser(session.user);
-
-    // CORREÇÃO: Checa se o usuário tem a etiqueta "super_admin" no metadata do Supabase
-    // ou se o e-mail bate com a variável do .env (como plano B)
-    const isSuper = 
-      session.user.user_metadata?.role === "super_admin" || 
-      session.user.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL;
-
-    setIsSuperAdmin(isSuper);
-
-    if (!isSuper) {
-      const myStore = await loadProducerByUserId(session.user.id);
-      setCurrentProducer(myStore);
-      setMyStoreForm(myStore);
-    }
-    fetchData(session.user.id, isSuper);
-  } else {
-    setCurrentUser(null);
-    setCurrentProducer(null);
-  }
-};
-
-  const fetchData = async (userId: string, isSuper: boolean) => {
+  const fetchData = useCallback(async (userId: string, isSuper: boolean) => {
     if (isSuper) {
       const [allProducts, allProducers] = await Promise.all([
         loadProducts(),
@@ -94,13 +88,46 @@ const checkSession = async () => {
       setProducts(allProducts);
       setProducers(allProducers);
     } else {
+      setProducers([]);
       const myStore = await loadProducerByUserId(userId);
       if (myStore) {
         const myProducts = await loadProducts(myStore.id);
         setProducts(myProducts);
+      } else {
+        setProducts([]);
       }
     }
-  };
+  }, []);
+
+  // Verifica a sessão atual no Supabase Auth
+  const checkSession = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      setCurrentUser(session.user);
+
+      let isSuper = false;
+      try {
+        isSuper = await currentUserIsSuperAdmin();
+      } catch (error) {
+        console.error("Não foi possível consultar o papel protegido do usuário:", error);
+      }
+
+      setIsSuperAdmin(isSuper);
+
+      if (!isSuper) {
+        const myStore = await loadProducerByUserId(session.user.id);
+        setCurrentProducer(myStore);
+        setMyStoreForm(myStore);
+      }
+      fetchData(session.user.id, isSuper);
+    } else {
+      setCurrentUser(null);
+      setCurrentProducer(null);
+      setIsSuperAdmin(false);
+      setProducts([]);
+      setProducers([]);
+    }
+  }, [fetchData]);
 
   useEffect(() => {
     checkSession();
@@ -110,7 +137,7 @@ const checkSession = async () => {
     });
 
     return () => authListener.subscription.unsubscribe();
-  }, []);
+  }, [checkSession]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -131,6 +158,8 @@ const checkSession = async () => {
     await supabase.auth.signOut();
     setCurrentUser(null);
     setCurrentProducer(null);
+    setProducts([]);
+    setProducers([]);
     setEmail("");
     setPassword("");
     toast({ title: "Sessão encerrada" });
@@ -138,31 +167,34 @@ const checkSession = async () => {
 
   // --- LÓGICA DE PRODUTOS ---
   const resetProductForm = () => {
+    pendingProductImages.forEach(({ previewUrl }) => URL.revokeObjectURL(previewUrl));
     setProductForm(emptyProductForm);
+    setPendingProductImages([]);
+    setOriginalProductImages([]);
     setEditingProductId(null);
   };
 
   const handleProductImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
-    const filesArray = Array.from(files);
-    const loadedImages: string[] = [];
-
-    filesArray.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        loadedImages.push(reader.result as string);
-        if (loadedImages.length === filesArray.length) {
-          setProductForm((f) => ({ ...f, image: [...f.image, ...loadedImages] }));
-        }
-      };
-      reader.readAsDataURL(file);
-    });
+    try {
+      const files = Array.from(e.target.files ?? []);
+      files.forEach(validateImageFile);
+      setPendingProductImages((current) => [
+        ...current,
+        ...files.map((file) => ({ file, previewUrl: URL.createObjectURL(file) })),
+      ]);
+      e.target.value = "";
+    } catch (error) {
+      toast({
+        title: "Imagem inválida",
+        description: error instanceof Error ? error.message : "Não foi possível selecionar a imagem.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!productForm.name || !productForm.price || productForm.image.length === 0 || !productForm.category) {
+    if (!productForm.name || !productForm.price || (productForm.image.length === 0 && pendingProductImages.length === 0) || !productForm.category) {
       toast({ title: "Preencha os campos obrigatórios", variant: "destructive" });
       return;
     }
@@ -170,29 +202,52 @@ const checkSession = async () => {
     // Se for produtor comum, força a associação com o ID da loja dele
     const targetProducerId = isSuperAdmin ? (productForm.producerId || undefined) : currentProducer?.id;
 
-    const product: Product = {
-      id: editingProductId ?? crypto.randomUUID(),
-      name: productForm.name,
-      price: parseFloat(productForm.price),
-      originalPrice: productForm.originalPrice ? parseFloat(productForm.originalPrice) : undefined,
-      image: productForm.image,
-      category: productForm.category,
-      description: productForm.description,
-      isNew: productForm.isNew,
-      producerId: targetProducerId,
-    };
+    const productId = editingProductId ?? crypto.randomUUID();
+    let uploadedImages: string[] = [];
 
-    const success = await saveProducts(product);
-    if (success) {
+    try {
+      uploadedImages = await uploadProductImages(
+        pendingProductImages.map(({ file }) => file),
+        productId,
+        targetProducerId ?? null,
+      );
+
+      const product: Product = {
+        id: productId,
+        name: productForm.name,
+        price: parseFloat(productForm.price),
+        originalPrice: productForm.originalPrice ? parseFloat(productForm.originalPrice) : undefined,
+        image: [...productForm.image, ...uploadedImages],
+        category: productForm.category,
+        description: productForm.description,
+        isNew: productForm.isNew,
+        producerId: targetProducerId,
+      };
+
+      const success = await saveProducts(product);
+      if (!success) {
+        await cleanupCatalogImages(uploadedImages);
+        throw new Error("O banco recusou a alteração do produto.");
+      }
+
+      const removedImages = originalProductImages.filter((image) => !productForm.image.includes(image));
+      await cleanupCatalogImages(removedImages);
       if (currentUser) fetchData(currentUser.id, isSuperAdmin);
       toast({ title: editingProductId ? "Produto atualizado" : "Produto adicionado" });
       resetProductForm();
-    } else {
-      toast({ title: "Erro ao salvar produto", variant: "destructive" });
+    } catch (error) {
+      toast({
+        title: "Erro ao salvar produto",
+        description: error instanceof Error ? error.message : "Não foi possível enviar as imagens.",
+        variant: "destructive",
+      });
     }
   };
 
   const handleProductEdit = (p: Product) => {
+    pendingProductImages.forEach(({ previewUrl }) => URL.revokeObjectURL(previewUrl));
+    setPendingProductImages([]);
+    setOriginalProductImages(p.image || []);
     setEditingProductId(p.id);
     setProductForm({
       id: p.id,
@@ -222,15 +277,33 @@ const checkSession = async () => {
   // --- LÓGICA DE SUPER ADMIN: CRIAR NOVO PRODUTOR COM CONTA ---
   const handleCreateProducerAccount = async (e: React.FormEvent) => {
     e.preventDefault();
+    const form = e.currentTarget;
     if (!producerForm.name || !producerForm.email || !producerForm.password) {
       toast({ title: "Nome, E-mail e Senha são obrigatórios", variant: "destructive" });
       return;
     }
 
     const res = await createProducerWithAccount(producerForm);
-    if (res.success) {
-      toast({ title: "Conta e Loja criadas com sucesso!" });
+    if (res.success && res.producer) {
+      if (producerCreateImage) {
+        let uploadedImage: string | null = null;
+        try {
+          uploadedImage = await uploadProducerImage(producerCreateImage, res.producer.id);
+          const saved = await saveProducer({ ...res.producer, image: uploadedImage });
+          if (!saved) throw new Error("A conta foi criada, mas a foto não pôde ser vinculada.");
+        } catch (error) {
+          if (uploadedImage) await cleanupCatalogImages([uploadedImage]);
+          toast({
+            title: "Conta criada sem foto",
+            description: error instanceof Error ? error.message : "Envie a foto novamente depois.",
+            variant: "destructive",
+          });
+        }
+      }
+      toast({ title: "Conta e loja criadas com sucesso!" });
       setProducerForm(emptyProducerCreateForm);
+      setProducerCreateImage(null);
+      form.reset();
       if (currentUser) fetchData(currentUser.id, isSuperAdmin);
     } else {
       toast({ title: "Erro ao criar produtor", description: res.message, variant: "destructive" });
@@ -242,13 +315,33 @@ const checkSession = async () => {
     e.preventDefault();
     if (!myStoreForm) return;
 
-    const success = await saveProducer(myStoreForm);
-    if (success) {
-      toast({ title: "Informações da loja salvas com sucesso!" });
-      if (currentUser) fetchData(currentUser.id, isSuperAdmin);
-    } else {
-      toast({ title: "Erro ao atualizar dados da loja", variant: "destructive" });
+    const previousImage = myStoreForm.image;
+    let uploadedImage: string | null = null;
+    let updatedStore: Producer | null = null;
+    try {
+      uploadedImage = myStoreImage
+        ? await uploadProducerImage(myStoreImage, myStoreForm.id)
+        : null;
+      const nextImage = uploadedImage ?? myStoreForm.image;
+      updatedStore = { ...myStoreForm, image: nextImage };
+      const success = await saveProducer(updatedStore);
+      if (!success) throw new Error("O banco recusou a alteração da loja.");
+    } catch (error) {
+      if (uploadedImage) await cleanupCatalogImages([uploadedImage]);
+      toast({
+        title: "Erro ao atualizar dados da loja",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+      return;
     }
+
+    if (myStoreImage && previousImage) await cleanupCatalogImages([previousImage]);
+    setMyStoreForm(updatedStore);
+    setCurrentProducer(updatedStore);
+    setMyStoreImage(null);
+    toast({ title: "Informações da loja salvas com sucesso!" });
+    if (currentUser) fetchData(currentUser.id, isSuperAdmin);
   };
 
   const handleChangeMyPassword = async (e: React.FormEvent) => {
@@ -422,6 +515,25 @@ const checkSession = async () => {
                         ))}
                       </div>
                     )}
+                    {pendingProductImages.length > 0 && (
+                      <div className="mt-2 grid grid-cols-4 gap-2">
+                        {pendingProductImages.map(({ previewUrl }, idx) => (
+                          <div key={previewUrl} className="relative group">
+                            <img src={previewUrl} alt="Nova imagem" className="w-full h-20 object-cover rounded-md border border-primary/50" />
+                            <button
+                              type="button"
+                              onClick={() => setPendingProductImages((current) => {
+                                URL.revokeObjectURL(current[idx].previewUrl);
+                                return current.filter((_, imageIndex) => imageIndex !== idx);
+                              })}
+                              className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -506,10 +618,11 @@ const checkSession = async () => {
                         <div>
                           <Label>Senha Inicial *</Label>
                           <Input 
-                            type="text"
+                            type="password"
                             value={producerForm.password} 
                             onChange={(e) => setProducerForm({ ...producerForm, password: e.target.value })} 
                             placeholder="••••••••" 
+                            minLength={8}
                             required
                           />
                         </div>
@@ -531,6 +644,33 @@ const checkSession = async () => {
                           onChange={(e) => setProducerForm({ ...producerForm, bio: e.target.value })} 
                           rows={3}
                         />
+                      </div>
+
+                      <div>
+                        <Label>Foto do Produtor ou Propriedade</Label>
+                        <Input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0] ?? null;
+                            if (!file) return;
+                            try {
+                              validateImageFile(file);
+                              setProducerCreateImage(file);
+                            } catch (error) {
+                              e.target.value = "";
+                              setProducerCreateImage(null);
+                              toast({
+                                title: "Imagem inválida",
+                                description: error instanceof Error ? error.message : undefined,
+                                variant: "destructive",
+                              });
+                            }
+                          }}
+                        />
+                        {producerCreateImage && (
+                          <p className="mt-1 text-xs text-muted-foreground">{producerCreateImage.name}</p>
+                        )}
                       </div>
 
                       <Button type="submit" className="w-full">
@@ -601,13 +741,25 @@ const checkSession = async () => {
                             type="file" 
                             accept="image/*" 
                             onChange={(e) => {
-                              const file = e.target.files?.[0];
+                              const file = e.target.files?.[0] ?? null;
                               if (!file) return;
-                              const reader = new FileReader();
-                              reader.onload = () => setMyStoreForm({ ...myStoreForm, image: reader.result as string });
-                              reader.readAsDataURL(file);
+                              try {
+                                validateImageFile(file);
+                                setMyStoreImage(file);
+                              } catch (error) {
+                                e.target.value = "";
+                                setMyStoreImage(null);
+                                toast({
+                                  title: "Imagem inválida",
+                                  description: error instanceof Error ? error.message : undefined,
+                                  variant: "destructive",
+                                });
+                              }
                             }} 
                           />
+                          {myStoreImage && (
+                            <p className="mt-1 text-xs text-muted-foreground">Nova foto: {myStoreImage.name}</p>
+                          )}
                           {myStoreForm.image && (
                             <img src={myStoreForm.image} alt="preview" className="mt-2 w-24 h-24 object-cover rounded-md" />
                           )}

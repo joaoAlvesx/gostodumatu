@@ -1,0 +1,7 @@
+project_id = "vzvbcewvdqcerogwsjeu"
+
+[functions.create-producer]
+verify_jwt = true
+
+[functions.migrate-catalog-images]
+verify_jwt = true
