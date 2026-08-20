@@ -92,7 +92,6 @@ export async function saveProducer(
 ): Promise<boolean> {
   try {
     const payload = {
-      ...(producer.id ? { id: producer.id } : {}),
       name: producer.name,
       slug: producer.slug || slugify(producer.name),
       bio: producer.bio ?? null,
@@ -100,7 +99,10 @@ export async function saveProducer(
       location: producer.location ?? null,
     } satisfies TablesUpdate<"producers">;
 
-    const { error } = await supabase.from("producers").upsert(payload, { onConflict: "id" });
+    const query = producer.id
+      ? supabase.from("producers").update(payload).eq("id", producer.id)
+      : supabase.from("producers").insert(payload);
+    const { error } = await query;
     if (error) throw error;
 
     window.dispatchEvent(new Event("producers:updated"));
