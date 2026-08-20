@@ -1,268 +1,540 @@
 # Checkout no Site — Gostudumatu
 
-Documento de planejamento para substituir o fluxo atual de finalização via WhatsApp por um checkout completo integrado no site `https://gostodumatu.vercel.app/`, com pagamento processado pelo próprio site.
+> Documento de arquitetura e preparação operacional. Revisado em **18 de agosto de 2026**. Valores e limites de serviços externos devem ser conferidos novamente antes do lançamento.
+
+## 1. Objetivo
+
+Substituir a finalização atual pelo WhatsApp por um checkout completo no site:
+
+1. cliente entra com Google ou e-mail e senha;
+2. informa ou escolhe um endereço;
+3. o sistema separa o carrinho por produtor;
+4. o Melhor Envio calcula um frete real para cada origem;
+5. o cliente escolhe o serviço de cada remessa;
+6. a Gostudumatu recebe um único pagamento por Pix ou cartão;
+7. o sistema reserva e baixa o estoque, registra o pedido e gera uma etiqueta para cada produtor;
+8. cliente, produtor e super admin acompanham apenas os dados permitidos para seus perfis.
+
+### Decisões já definidas
+
+| Assunto | Decisão |
+|---|---|
+| Recebedor do pagamento | A conta Mercado Pago da Gostudumatu recebe o valor total; repasses aos produtores ficam fora do checkout no MVP |
+| Produtos de vários produtores | Permitidos no mesmo carrinho |
+| Expedição | Cada produtor envia sua parte do pedido |
+| Frete | Cotação real, compra e geração de etiquetas pelo Melhor Envio |
+| Pagamento | Pix e cartão em até 12 vezes com juros para o comprador |
+| Estoque | Reserva transacional de 30 minutos |
+| Conta do cliente | Google em destaque; e-mail e senha como alternativa; e-mail precisa ser confirmado antes do pagamento |
+| Área do cliente | Histórico e acompanhamento somente após login |
+| Operação | Produtor gerencia suas remessas; super admin gerencia tudo |
+| Pós-venda | Reembolso total ou parcial por remessa |
+| E-mail | Resend para autenticação e mensagens transacionais |
+| Interface | Página dedicada `/checkout`, não um modal |
 
 ---
 
-## 1. Contexto e Motivação
+## 2. Arquitetura recomendada
 
-Hoje, o único caminho de compra é o `CartDrawer` montar uma mensagem e abrir o WhatsApp (`src/components/CartDrawer.tsx:14-24`). Pagamento, frete e confirmação são combinados manualmente. Esse fluxo:
+### Durante implementação e homologação
 
-- Não gera pedido registrado, dificultando controle de estoque, financeiro e histórico do cliente.
-- Depende 100% da disponibilidade do vendedor para fechar a venda.
-- Não permite pagamento online (Pix/cartão/boleto) — pagamento é combinado por fora.
-
-A meta é manter o site como ponto único de venda: o cliente escolhe produtos, preenche dados de entrega, paga online e recebe confirmação automática.
-
----
-
-## 2. Premissas e Decisões Técnicas
-
-| Decisão | Escolha | Justificativa |
-|---|---|---|
-| Gateway de pagamento | **Mercado Pago Checkout Bricks** (embed no site) | Suporta Pix, cartão e boleto; não redireciona para domínio externo; boa documentação; funciona com CNPJ/MEI. |
-| Backend de pagamento | **Vercel Serverless Functions** (`/api/*`) | Mantém tudo dentro do mesmo deploy, sem custo extra, secret keys nunca vão pro front. |
-| Persistência de pedidos | **Supabase** (já em uso) | Tabela `orders` + `order_items` + `order_events`. |
-| Notificação de pagamento aprovado | **Webhook Mercado Pago → Vercel Function → Supabase** | Idempotente, com verificação de assinatura. |
-| Cálculo de frete | **Melhor Envio** (agregador de Correios + transportadoras) | API REST unificada, sem contrato mínimo, sandbox completo, gratuito (paga só por venda processada). Correios direto exige contrato PJ e só vale para alto volume. |
-| Fallback de frete | Tabela fixa por região para MVP | Se Melhor Envio cair, evita travar checkout. |
-| Armazenamento de dados sensíveis | **Nenhum dado de cartão no nosso banco** | Mercado Pago tokeniza; só guardamos `payment_id` e últimos 4 dígitos se necessário. |
-
-> **Substituível depois:** qualquer gateway com API similar (Stripe, PagSeguro, Asaas) encaixa nesta mesma arquitetura.
-
----
-
-## 3. Fases de Implementação
-
-Estimativa total: **~5 a 8 dias úteis** para um dev solo experiente no stack. Pode ser paralelizado por 2 devs em ~3-4 dias.
-
-### Fase 0 — Preparação e Compliance (½ dia)
-
-**Objetivo:** liberar a conta no Mercado Pago e configurar a Vercel.
-
-Tarefas:
-- [ ] Criar conta de vendedor no Mercado Pago (CNPJ ou MEI). Validar conta, dados bancários, antifraude.
-- [ ] Obter `Access Token` de produção e de sandbox (teste).
-- [ ] Configurar webhook URL no painel do MP apontando para `https://gostodumatu.vercel.app/api/webhooks/mercadopago`.
-- [ ] No painel Vercel, adicionar variáveis:
-  - `MERCADOPAGO_ACCESS_TOKEN` (production)
-  - `MERCADOPAGO_WEBHOOK_SECRET` (opcional, recomendado)
-  - `MERCADOPAGO_PUBLIC_KEY` (usado no front)
-- [ ] Criar conta no **Melhor Envio** (melhorenvio.com.br), gerar token de aplicação e cadastrar dimensões padrão dos pacotes (peso médio dos produtos artesanais).
-- [ ] Adicionar `MELHORENVIO_TOKEN` e `MELHORENVIO_SANDBOX=true` (na dev) nas env vars da Vercel.
-- [ ] Cadastrar CEP de origem (endereço de envio dos produtores — perguntar ao João).
-
-**Entregável:** credenciais configuradas e webhook registrado em modo teste.
-
----
-
-### Fase 1 — Modelo de Dados no Supabase (½ dia)
-
-**Objetivo:** tabelas para registrar pedidos.
-
-Tarefas:
-- [ ] Migration SQL com tabelas:
-  - `orders` (id, customer_name, customer_email, customer_phone, customer_cpf, shipping_cep, shipping_street, shipping_number, shipping_city, shipping_state, subtotal, shipping_cost, total, status, payment_provider, payment_id, payment_method, created_at, updated_at)
-  - `order_items` (id, order_id FK, product_id FK, product_name_snapshot, unit_price, quantity, line_total)
-  - `order_events` (id, order_id FK, event_type, payload JSONB, created_at) — auditoria
-- [ ] Status enum: `pending_payment`, `paid`, `rejected`, `cancelled`, `shipped`, `delivered`.
-- [ ] RLS: leitura pública desabilitada; leitura pelo `service_role`; escrita só via backend.
-- [ ] Função RPC `get_order_for_tracking(order_id, email)` para página pública de rastreio (sem expor tudo).
-
-**Entregável:** migrations aplicadas em dev; tipos TS gerados.
-
----
-
-### Fase 2 — Backend de Pagamento (Vercel Functions) (1–1.5 dias)
-
-**Objetivo:** três endpoints serverless.
-
-Arquivos a criar em `/api`:
-- `api/payments/create-preference.ts` — POST: recebe `{ items, customer, shipping }`, valida, recalcula preços consultando Supabase (nunca confiar no preço do front), cria preferência no MP, retorna `init_point` + `preference_id` + `order_id` interno.
-- `api/webhooks/mercadopago.ts` — POST: recebe notificação, valida assinatura, busca status do pagamento na API do MP, atualiza `orders` + insere em `order_events`. Idempotente (checar `order_events.event_type` único por `payment_id`).
-- `api/orders/[id].ts` — GET: retorna pedido para a página de sucesso (via token assinado gerado no momento da criação).
-
-Padrões:
-- TypeScript com `vercel.json` config.
-- Cliente MP: SDK oficial `mercadopago` no Node runtime.
-- Logs estruturados (`console.info`/`console.error` com JSON).
-- Variáveis de ambiente validadas no boot da função.
-- Erros padronizados: `{ error: { code, message } }`.
-
-**Entregável:** 3 endpoints testáveis via curl/Postman em ambiente de dev.
-
----
-
-### Fase 3 — UI de Checkout (2 dias)
-
-**Objetivo:** telas para finalizar compra dentro do site.
-
-Componentes novos em `src/components/checkout/`:
-- `CheckoutDialog.tsx` — modal/wizard de 3 passos (Endereço → Pagamento → Confirmação).
-- `AddressForm.tsx` — campos: nome, email, telefone, CPF, CEP (com busca ViaCEP para auto-preencher rua/cidade/UF), número, complemento.
-- `PaymentBrick.tsx` — wrapper do `PaymentBrick` do Mercado Pago Bricks. Props: `amount`, `publicKey`, `preferenceId`.
-- `OrderSuccess.tsx` — tela pós-pagamento com número do pedido e link de rastreio.
-- `OrderTracking.tsx` — página pública `/pedido/:id` (acessível sem login, via token).
-
-Refatorar `src/components/CartDrawer.tsx`:
-- Trocar botão "Finalizar pelo WhatsApp" por "Finalizar compra".
-- Adicionar botão secundário "Continuar comprando" e link para checkout.
-
-Nova rota: `src/pages/OrderTracking.tsx` e registro em `App.tsx`/router.
-
-Bibliotecas adicionais:
-- `react-hook-form` + `zod` (já instalados) para validação do formulário.
-- `@mercadopago/sdk-react` para carregar o Brick no front.
-
-**Entregável:** fluxo visual completo, do carrinho até a tela de sucesso.
-
----
-
-### Fase 4 — Integração End-to-End e Sandbox (1 dia)
-
-**Objetivo:** fluxo real em modo de teste.
-
-Tarefas:
-- [ ] Usar `MERCADOPAGO_ACCESS_TOKEN` de sandbox.
-- [ ] Cartão de teste do MP (`5031 4332 1540 6351`, qualquer CVV, futuro) para validar fluxo de cartão.
-- [ ] Pix teste via QR gerado pelo Brick.
-- [ ] Validar webhook em dev: usar `ngrok` ou `vercel dev --listen` para expor `localhost` ao MP.
-- [ ] Testar idempotência: enviar webhook duplicado e confirmar que o pedido não muda de estado duas vezes.
-- [ ] Edge cases: usuário fecha a janela durante o pagamento → pedido fica `pending_payment` → webhook converte para `paid` mesmo assim.
-- [ ] Confirmar que voltar do Brick (botão "voltar") leva à tela "Pagamento pendente" com opção de tentar de novo.
-
-**Entregável:** todos os fluxos validados com transações de teste reais.
-
----
-
-### Fase 5 — Endurecimento e Produção (1 dia)
-
-**Objetivo:** código pronto para receber dinheiro real.
-
-Checklist de segurança:
-- [ ] **Nunca confiar no preço enviado pelo front** — sempre recalcular via Supabase antes de criar preferência.
-- [ ] Validar assinatura do webhook (`x-signature` header com HMAC SHA256).
-- [ ] Rate-limit básico nas rotas públicas (`/api/payments/create-preference`).
-- [ ] Logs não expõem dados sensíveis (mascarar CPF, cartão, email).
-- [ ] CORS restrito ao domínio `gostodumatu.vercel.app`.
-- [ ] Timeout de sessão: pedido `pending_payment` expira em 30 min → libera estoque e marca como `expired`.
-
-Checklist funcional:
-- [ ] Página `/admin/pedidos` (já existe `Admin.tsx`) — listar pedidos com filtros por status e data.
-- [ ] Email transacional de confirmação (envio via Supabase Edge Function + Resend/SendGrid — opcional no MVP, pode ir como `toast` + número na tela).
-- [ ] Botão "Ajuda" WhatsApp mantido em página de suporte para casos excepcionais.
-
-Deploy:
-- [ ] Variáveis de produção configuradas na Vercel.
-- [ ] Webhook de produção registrado.
-- [ ] Teste com Pix real de R$ 0,01.
-
-**Entregável:** produção estável com primeira venda real.
-
----
-
-### Fase 6 — Pós-Produção (contínuo, fora do escopo inicial)
-
-Melhorias incrementais:
-- Cálculo real de frete via Correios (substituir tabela fixa).
-- Cupons de desconto (campo `coupon_code` em `orders`, validação server-side).
-- Parcelamento sem juros customizado.
-- Painel do cliente com histórico (`/minhas-compras`).
-- Split de pagamento com produtores (Marketplace API do MP).
-- Sistema de rastreamento real (integração com transportadora).
-
----
-
-## 4. Estimativa Consolidada
-
-| Fase | Descrição | Tempo | Dependência |
-|---|---|---|---|
-| 0 | Preparação/compliance (MP + Melhor Envio) | 0.5 dia | — |
-| 1 | Modelo de dados Supabase | 0.5 dia | — |
-| 2 | Backend Vercel Functions | 1–1.5 dias | Fase 0, 1 |
-| 3 | UI de checkout | 2 dias | Fase 1 |
-| 4 | Integração end-to-end (sandbox) | 1 dia | Fase 2, 3 |
-| 5 | Endurecimento + produção | 1 dia | Fase 4 |
-| **Total** | **Solo dev** | **~5.5–7 dias úteis** | |
-| **Total** | **2 devs paralelos** | **~3–4 dias úteis** | |
-
----
-
-## 5. Riscos e Mitigações
-
-| Risco | Probabilidade | Impacto | Mitigação |
-|---|---|---|---|
-| Conta MP reprovada por inconsistência cadastral | Média | Alto | Fase 0 começa validando conta antes de codar. |
-| Webhook perdido (MP caiu, rede) | Baixa | Médio | Cron diário (`/api/cron/reconcile-orders`) que consulta pagamentos `pending_payment` > 30 min na API do MP. |
-| Cliente fecha o browser antes do webhook | Alta | Médio | Pedido fica `pending_payment` no banco; ao reentrar `/pedido/:id`, botão "Já paguei? Verificar" força re-sync via API do MP. |
-| Mudança no frete quebra checkout | Média | Médio | Fallback de tabela fixa por região se Melhor Envio retornar erro/timeout (>3s). |
-| Bug de cálculo no front permite pagar menos | Baixa | Crítico | Recalcular preço SEMPRE no backend a partir do `product_id` salvo no Supabase. |
-
----
-
-## 6. Arquivos que Serão Criados/Modificados
-
-**Novos:**
-```
-api/
-  payments/
-    create-preference.ts
-  webhooks/
-    mercadopago.ts
-  orders/
-    [id].ts
-  cron/
-    reconcile-orders.ts          # Fase 5+
-supabase/
-  migrations/
-    20260812_create_orders.sql
-src/
-  components/
-    checkout/
-      CheckoutDialog.tsx
-      AddressForm.tsx
-      PaymentBrick.tsx
-  pages/
-    OrderTracking.tsx
-  lib/
-    checkout.ts                  # cliente para chamar /api/payments
-    shipping.ts                  # wrapper do Melhor Envio (chamada client-side)
-docs/
-  CHECKOUT.md                    # este arquivo
+```text
+Frontend Vite/React             Vercel Hobby
+Backend seguro e webhooks       Supabase Edge Functions
+Banco, Auth, Storage e Cron     Supabase
+Pagamentos de teste             Mercado Pago sandbox
+Fretes de teste                 Melhor Envio sandbox
+E-mails                         Resend
 ```
 
-**Modificados:**
+**A Vercel pode e deve continuar sendo usada durante o desenvolvimento.** Tecnicamente, o plano Hobby oferece bastante capacidade, mas a própria Vercel o restringe a projetos pessoais e não comerciais. Portanto, ele não deve ser o plano definitivo quando o checkout começar a receber vendas reais. Consulte [Vercel Hobby](https://vercel.com/docs/plans/hobby) e [Vercel Pricing](https://vercel.com/pricing).
+
+O backend será criado nas Edge Functions do Supabase desde o início. Isso evita implementar funções na Vercel agora e reescrevê-las na migração.
+
+### No lançamento comercial
+
+Opção recomendada para manter custo fixo próximo de zero:
+
+```text
+Frontend estático               Cloudflare Pages Free
+Backend seguro e webhooks       Supabase Edge Functions
+Banco, Auth, Storage e Cron     Supabase Free ou Pro
 ```
-src/components/CartDrawer.tsx    # botão WhatsApp → "Finalizar compra"
-src/pages/Admin.tsx              # nova aba Pedidos
-src/App.tsx (ou router)          # rota /pedido/:id
-package.json                     # adiciona: mercadopago, @mercadopago/sdk-react
-```
+
+O Cloudflare Pages atende bem a um projeto Vite: requisições e banda de arquivos estáticos são gratuitas e ilimitadas, com até 500 builds mensais no plano Free. Consulte [Cloudflare Pages Pricing](https://developers.cloudflare.com/pages/functions/pricing/) e [limites do Pages](https://developers.cloudflare.com/pages/platform/limits/).
+
+Alternativa sem migração de hospedagem: atualizar a Vercel para **Pro**, atualmente a partir de **US$ 20/mês**, com crédito mensal de uso. Nesse caso o domínio, o front e o deploy continuam exatamente onde estão.
+
+### Por que não colocar o backend no Cloudflare agora
+
+Cloudflare Workers também é uma boa opção, mas não é necessária neste estágio. O Supabase já será responsável por banco, autenticação, RLS, reservas de estoque e cron; manter as funções no mesmo ecossistema reduz segredos duplicados e pontos de falha.
+
+Se no futuro as Edge Functions virarem um gargalo, Workers Paid começa em aproximadamente **US$ 5/mês**, inclui 10 milhões de requisições mensais e não cobra tráfego de saída. Consulte [Cloudflare Workers Pricing](https://developers.cloudflare.com/workers/platform/pricing/).
 
 ---
 
-## 7. Critérios de Pronto (Definition of Done)
+## 3. O que os planos gratuitos suportam
 
-A feature é considerada entregue quando:
+### 3.1 Supabase Free
 
-1. Cliente consegue comprar sem sair do site, em celular e desktop.
-2. Pagamento por Pix e cartão funcionam em sandbox.
-3. Webhook atualiza o status do pedido em até 30 segundos após pagamento.
-4. Pedido aparece no painel admin com todos os dados corretos.
-5. Tentativa de manipular preço no front é bloqueada (teste manual com DevTools).
-6. Build passa, lint sem novos warnings, deploy em produção sem erro.
-7. Documentação deste arquivo reflete o que foi feito (atualizar após cada fase).
+Limites atuais mais relevantes:
+
+| Recurso | Limite gratuito |
+|---|---:|
+| Projetos ativos | 2 |
+| Banco de dados | 500 MB por projeto |
+| Tráfego/egress | 5 GB/mês |
+| Storage de arquivos | 1 GB |
+| Tráfego em cache do Storage | 5 GB/mês |
+| Usuários ativos mensais | 50.000 |
+| Edge Functions | 500.000 chamadas/mês |
+| Realtime | 2 milhões de mensagens/mês e pico de 200 conexões |
+| Retenção de logs | 1 dia |
+| Backups automáticos | Não incluídos |
+| Pausa por inatividade | Após uma semana sem atividade |
+
+Fontes: [Supabase Pricing](https://supabase.com/pricing) e [Supabase Billing](https://supabase.com/docs/guides/platform/billing-on-supabase).
+
+O plano gratuito é suficiente para desenvolver, homologar e iniciar uma operação pequena. As limitações mais preocupantes para uma loja não são quantidade de usuários nem chamadas de função: são **ausência de backup automático, pausa por inatividade, 500 MB de banco e 5 GB de tráfego**.
+
+No plano Free, passar de 500 MB pode deixar o banco em modo somente leitura. Consulte [Database Size](https://supabase.com/docs/guides/platform/database-size).
+
+### 3.2 Problema atual das imagens
+
+Hoje as telas administrativas transformam as imagens em Base64 e salvam esse conteúdo diretamente nas colunas `products.image` e `producers.image`.
+
+Na inspeção atual:
+
+- uma linha de produto com duas imagens possui aproximadamente **464 KB somente de imagem**;
+- uma linha de produtor possui aproximadamente **134 KB de imagem**;
+- o catálogo tem apenas 7 produtos, mas a resposta pública completa já ultrapassa **1 MB**.
+
+Isso consome banco e tráfego em toda abertura do catálogo. Com respostas de 1 MB, 5 GB representam aproximadamente 5.000 carregamentos completos, antes de considerar outras consultas.
+
+**Correção obrigatória antes do checkout:**
+
+1. converter imagens para WebP/JPEG otimizado;
+2. enviar arquivos para Supabase Storage;
+3. salvar no banco somente caminho/URL e metadados;
+4. migrar as imagens Base64 existentes;
+5. limitar tamanho e dimensões no upload;
+6. gerar miniaturas no navegador antes do upload ou em processamento separado.
+
+Depois dessa migração, as respostas JSON devem cair de centenas de KB para poucos KB e o CDN poderá armazenar as imagens em cache.
+
+### 3.3 Estimativa prática de capacidade gratuita
+
+Não existe conversão exata entre limites e quantidade de pedidos. O consumo depende de acessos ao catálogo, imagens, itens por pedido, tentativas de pagamento e número de e-mails.
+
+Após corrigir as imagens e mantendo payloads enxutos:
+
+- 500.000 Edge Functions/mês permitem dezenas de milhares de checkouts; não deve ser o primeiro gargalo;
+- considerando 20–40 KB de banco por pedido, 500 MB comportariam teoricamente mais de 10 mil pedidos acumulados, mas o upgrade deve ocorrer muito antes disso;
+- 5 GB de egress são suficientes para uma operação pequena se imagens forem servidas pelo Storage/CDN e as consultas não trouxerem payloads desnecessários;
+- o Resend Free normalmente será o limite operacional mais fácil de visualizar.
+
+Faixa prudente para permanecer inteiramente nos serviços gratuitos: **aproximadamente 200–500 pedidos por mês**, desde que o catálogo esteja otimizado e o uso seja monitorado. Isso não é garantia nem limite técnico; é uma faixa de operação recomendada para não trabalhar perto das cotas.
+
+### 3.4 Resend Free
+
+O plano gratuito permite **3.000 e-mails por mês e 100 por dia**. Se cada pedido gerar quatro mensagens — confirmação, pagamento, postagem e entrega — o teto teórico seria 750 pedidos/mês, sem contar confirmação de conta, recuperação de senha, reenvios e mensagens administrativas.
+
+Por segurança, planejar upgrade quando atingir 70% do limite diário ou mensal. O Pro atualmente começa em **US$ 20/mês para 50.000 e-mails**. Consulte [Resend Pricing](https://resend.com/pricing) e [limites de conta](https://resend.com/docs/knowledge-base/account-quotas-and-limits).
+
+### 3.5 Mercado Pago e Melhor Envio
+
+- A API do Mercado Pago não possui mensalidade de integração, mas **cada pagamento aprovado tem tarifa**. A taxa depende do meio, prazo de recebimento e política de parcelamento da conta. Conferir no painel antes do lançamento; não fixar uma porcentagem no código ou neste documento. Consulte [custos e credenciais do Mercado Pago](https://www.mercadopago.com.br/developers/pt/docs/getting-started).
+- A API do Melhor Envio não cobra taxa nem mensalidade. A Gostudumatu paga as etiquetas efetivamente compradas e precisa manter saldo disponível. Sandbox e produção são contas e aplicações separadas. Consulte [Introdução à API Melhor Envio](https://docs.melhorenvio.com.br/reference/introducao-api-melhor-envio).
 
 ---
 
-## 8. Como Iniciar
+## 4. Plano de custos por estágio
 
-Ordem recomendada de execução real:
+Valores em dólar, sem conversão, impostos ou tarifas variáveis de pagamento/frete.
 
-1. **Validar Fase 0** — abrir conta MP HOJE, leva 1-3 dias úteis para aprovar.
-2. Em paralelo, começar **Fase 1** (migrations) e **Fase 3** (UI estática sem pagamento) — não dependem do MP.
-3. Quando MP aprovar, implementar **Fase 2** (backend) usando credenciais sandbox.
-4. Conectar front com back (**Fase 4**).
-5. Subir para produção (**Fase 5**) quando estiver 1 semana estável em sandbox.
+| Estágio | Hospedagem | Supabase | E-mail | Custo fixo estimado |
+|---|---|---|---|---:|
+| Desenvolvimento | Vercel Hobby | Free | Resend Free | US$ 0/mês |
+| Lançamento econômico | Cloudflare Pages Free | Free | Resend Free | US$ 0/mês |
+| Produção recomendada | Cloudflare Pages Free | Pro | Resend Free | a partir de US$ 25/mês |
+| Crescimento | Cloudflare Pages Free | Pro | Resend Pro | a partir de US$ 45/mês |
+| Permanecer na Vercel | Vercel Pro | Free ou Pro | Free ou Pro | adicionar a partir de US$ 20/mês |
 
-Essa ordem minimiza tempo ocioso aguardando aprovação do gateway.
+Mesmo que seja possível lançar com Supabase Free, o **Supabase Pro é o primeiro upgrade recomendado quando vendas reais se tornarem recorrentes**, pois evita pausa por inatividade e inclui backups diários por sete dias, além de 8 GB de disco e 250 GB de egress.
+
+### Gatilhos objetivos para upgrade
+
+Atualizar o Supabase quando ocorrer primeiro:
+
+- vendas recorrentes que não possam depender de backup manual;
+- banco acima de 300–350 MB;
+- egress ou Storage acima de 70% por dois meses;
+- lentidão frequente ou necessidade de suporte;
+- necessidade de ambiente de produção separado sem consumir o limite de projetos gratuitos.
+
+Atualizar o Resend quando ocorrer primeiro:
+
+- mais de 70 e-mails em um dia;
+- mais de 2.100 e-mails no mês;
+- campanhas ou mensagens que não sejam estritamente transacionais.
+
+Atualizar a Vercel para Pro somente se a decisão for manter a produção nela. Se o front migrar para Cloudflare Pages, a Vercel Hobby pode continuar apenas para desenvolvimento pessoal e previews sem operação comercial.
+
+---
+
+## 5. Responsabilidades: o que depende de você
+
+Legenda:
+
+- **VOCÊ:** cadastro, validação, decisão comercial ou acesso a painel externo.
+- **IMPLEMENTAÇÃO:** código, migrations, integração, validações e testes.
+
+### 5.1 Domínio e hospedagem
+
+#### Agora
+
+- [ ] **VOCÊ:** manter o projeto atual na Vercel Hobby para desenvolvimento.
+- [ ] **VOCÊ:** confirmar acesso ao registrador/DNS de `gostodumatu.com.br`.
+- [ ] **IMPLEMENTAÇÃO:** usar `gostodumatu.com.br` como domínio canônico; `gostudumatu.vercel.app` será apenas preview.
+
+#### Antes do lançamento
+
+Escolher uma das opções:
+
+- [ ] **VOCÊ — recomendada:** criar conta Cloudflare, conectar o repositório ao Pages e permitir a alteração do DNS; ou
+- [ ] **VOCÊ — alternativa:** informar que prefere Vercel Pro e cadastrar o meio de pagamento na Vercel.
+
+Migração para Cloudflare Pages:
+
+1. conectar o mesmo repositório Git;
+2. configurar build `npm run build` e diretório de saída `dist`;
+3. copiar apenas as variáveis públicas do frontend;
+4. configurar fallback SPA para `index.html`;
+5. validar um domínio temporário `*.pages.dev`;
+6. apontar `gostodumatu.com.br` e `www` para o Pages;
+7. atualizar URLs permitidas do Supabase Auth;
+8. validar login, checkout e retornos antes de remover o domínio da Vercel.
+
+Como os webhooks e o backend estarão no Supabase, eles não mudam de endereço nessa migração.
+
+### 5.2 Supabase
+
+- [ ] **VOCÊ:** garantir acesso de Owner ao projeto atual.
+- [ ] **VOCÊ:** criar uma nova chave pública `sb_publishable_...` e uma chave secreta `sb_secret_...` no painel; as chaves legadas atuais serão migradas gradualmente. Consulte [migração de chaves](https://supabase.com/docs/guides/getting-started/migrating-to-new-api-keys).
+- [ ] **VOCÊ:** não enviar chaves secretas por mensagem, commit ou variável iniciada com `VITE_`.
+- [ ] **VOCÊ:** adicionar `http://localhost:8080`, URL da Vercel, URL do Cloudflare preview e domínio final na lista de redirects do Auth.
+- [ ] **VOCÊ:** desativar confirmação automática de e-mail quando Resend estiver configurado.
+- [ ] **VOCÊ:** habilitar Google no painel após criar as credenciais descritas abaixo.
+- [ ] **IMPLEMENTAÇÃO:** versionar migrations, RLS, tipos TypeScript, Edge Functions, Storage, Cron e políticas de acesso.
+- [ ] **IMPLEMENTAÇÃO:** migrar imagens Base64 para Storage.
+- [ ] **IMPLEMENTAÇÃO:** usar Vault para tokens rotativos do Melhor Envio. O Vault armazena segredos criptografados: [Supabase Vault](https://supabase.com/docs/guides/database/vault).
+
+Enquanto estiver no Free:
+
+- [ ] **VOCÊ:** exportar backup antes de cada alteração estrutural e ao menos semanalmente depois que houver pedidos reais.
+- [ ] **VOCÊ:** acompanhar Database, Egress, Storage, Auth e Edge Functions na tela de Usage.
+
+### 5.3 Login com Google
+
+- [ ] **VOCÊ:** entrar no Google Cloud Console e criar um projeto da Gostudumatu.
+- [ ] **VOCÊ:** configurar a tela de consentimento com audiência `External`.
+- [ ] **VOCÊ:** preencher nome, logo, domínio, e-mail de suporte e contato técnico.
+- [ ] **VOCÊ:** publicar páginas de Política de Privacidade e Termos de Uso no domínio antes de solicitar publicação do OAuth.
+- [ ] **VOCÊ:** solicitar apenas os escopos `openid`, `email` e `profile`.
+- [ ] **VOCÊ:** criar um OAuth Client do tipo `Web application`.
+- [ ] **VOCÊ:** cadastrar origens autorizadas do domínio e ambiente de teste.
+- [ ] **VOCÊ:** copiar exatamente a callback exibida pelo provedor Google no painel do Supabase para `Authorized redirect URIs`.
+- [ ] **VOCÊ:** colocar o aplicativo em produção; no modo Testing, somente usuários adicionados à lista de teste entram e as autorizações expiram.
+- [ ] **VOCÊ:** cadastrar Client ID e Client Secret diretamente no painel Supabase Auth — nunca no frontend.
+- [ ] **IMPLEMENTAÇÃO:** criar telas de login, cadastro, confirmação, recuperação de senha e callback.
+
+Guia oficial: [Supabase Login with Google](https://supabase.com/docs/guides/auth/social-login/auth-google).
+
+### 5.4 Resend e domínio de e-mail
+
+- [ ] **VOCÊ:** criar conta no Resend.
+- [ ] **VOCÊ:** adicionar um subdomínio de envio, por exemplo `mail.gostodumatu.com.br`.
+- [ ] **VOCÊ:** adicionar no DNS os registros SPF e DKIM fornecidos pelo Resend e configurar DMARC.
+- [ ] **VOCÊ:** criar uma API Key de produção com o menor escopo possível.
+- [ ] **VOCÊ:** escolher remetentes, por exemplo `nao-responda@gostodumatu.com.br` e `pedidos@gostodumatu.com.br`.
+- [ ] **VOCÊ:** conectar o Resend como SMTP personalizado no Supabase Auth. O SMTP padrão do Supabase não serve para produção e atualmente limita envios a destinatários autorizados e cerca de duas mensagens por hora. Consulte [Supabase Custom SMTP](https://supabase.com/docs/guides/auth/auth-smtp).
+- [ ] **IMPLEMENTAÇÃO:** criar templates e fila idempotente para confirmação de pagamento, postagem, entrega, cancelamento e reembolso.
+
+### 5.5 Mercado Pago
+
+- [ ] **VOCÊ:** criar ou validar uma conta de vendedor da Gostudumatu com os dados jurídicos e bancários corretos.
+- [ ] **VOCÊ:** cadastrar uma chave Pix na conta.
+- [ ] **VOCÊ:** acessar Mercado Pago Developers > Suas integrações > Criar aplicação.
+- [ ] **VOCÊ:** selecionar pagamentos online, loja própria e **Checkout Transparente**.
+- [ ] **VOCÊ:** obter Public Key e Access Token de teste.
+- [ ] **VOCÊ:** criar/usar as contas de teste de vendedor e comprador fornecidas pelo Mercado Pago.
+- [ ] **VOCÊ:** depois da homologação, ativar credenciais de produção.
+- [ ] **VOCÊ:** cadastrar o webhook de teste e o de produção apontando para a Edge Function do Supabase.
+- [ ] **VOCÊ:** selecionar eventos de criação e atualização de pagamentos/orders.
+- [ ] **VOCÊ:** copiar o segredo de assinatura do webhook para os Secrets do Supabase.
+- [ ] **VOCÊ:** conferir no painel as tarifas reais de Pix, cartão, prazo de recebimento e parcelamento antes de definir preços.
+- [ ] **IMPLEMENTAÇÃO:** integrar Card Payment Brick para cartão e o fluxo Pix por QR Code.
+- [ ] **IMPLEMENTAÇÃO:** usar a **Orders API**, atualmente recomendada pelo Mercado Pago; a Payments API está marcada como legada. Consulte [referência do Checkout Transparente](https://www.mercadopago.com.br/developers/pt/reference/online-payments/checkout-api/overview).
+- [ ] **IMPLEMENTAÇÃO:** usar `X-Idempotency-Key`, validar `x-signature`, nunca confiar no valor do navegador e nunca armazenar número/CVV de cartão.
+
+### 5.6 Melhor Envio
+
+Sandbox e produção são ambientes separados; será necessário repetir o cadastro nos dois.
+
+- [ ] **VOCÊ:** criar uma conta no sandbox do Melhor Envio.
+- [ ] **VOCÊ:** criar uma aplicação em Integrações > Área Dev.
+- [ ] **VOCÊ:** informar site, contatos técnico/comercial e a callback fornecida pela implementação.
+- [ ] **VOCÊ:** autorizar somente os escopos necessários: cotação, carrinho, checkout, geração, impressão, cancelamento e rastreio de etiquetas.
+- [ ] **VOCÊ:** fornecer Client ID e Client Secret por meio seguro para cadastro nos Secrets.
+- [ ] **VOCÊ:** autorizar a aplicação para gerar o primeiro access token e refresh token.
+- [ ] **VOCÊ:** repetir o processo no ambiente de produção após homologar.
+- [ ] **VOCÊ:** manter saldo suficiente na Melhor Carteira para compra automática das etiquetas.
+- [ ] **IMPLEMENTAÇÃO:** renovar access token automaticamente; ele dura 30 dias e o refresh token, 45 dias. Consulte [autenticação Melhor Envio](https://docs.melhorenvio.com.br/docs/autenticacao).
+- [ ] **IMPLEMENTAÇÃO:** guardar os tokens rotativos no Vault, nunca no navegador.
+
+Para cada produtor, **VOCÊ** deverá obter e validar:
+
+- nome/razão social;
+- CPF ou CNPJ e inscrição estadual quando aplicável;
+- telefone e e-mail;
+- endereço completo e CEP de origem;
+- agência/ponto de postagem preferencial quando o serviço exigir;
+- tipo de envio comercial ou não comercial;
+- emissão e chave de nota fiscal quando exigida;
+- peso e dimensões reais de cada produto embalado.
+
+O Melhor Envio exige peso e dimensões para cotação e dados completos para emissão de etiqueta. Consulte [interface e dados obrigatórios](https://docs.melhorenvio.com.br/docs/interface-de-usuario).
+
+### 5.7 Textos jurídicos e operação
+
+- [ ] **VOCÊ:** fornecer Política de Privacidade, Termos de Uso, Política de Trocas/Cancelamento e Política de Entrega revisadas para o negócio.
+- [ ] **VOCÊ:** definir quem atende pedidos com falha, disputa, chargeback ou etiqueta não gerada.
+- [ ] **VOCÊ:** definir prazo máximo de preparo de cada produtor.
+- [ ] **VOCÊ:** confirmar como será feito o repasse financeiro aos produtores fora do sistema no MVP.
+- [ ] **VOCÊ:** validar com contador a emissão de nota e responsabilidade tributária da venda centralizada na Gostudumatu.
+
+---
+
+## 6. Variáveis e segredos
+
+### Podem existir no frontend
+
+Estas variáveis entram no bundle público e **não são secretas**:
+
+```env
+VITE_APP_URL=
+VITE_SUPABASE_URL=
+VITE_SUPABASE_PUBLISHABLE_KEY=
+VITE_MERCADOPAGO_PUBLIC_KEY=
+```
+
+### Secrets das Supabase Edge Functions
+
+Nunca usar prefixo `VITE_` nestas variáveis:
+
+```env
+APP_URL=
+MERCADOPAGO_ACCESS_TOKEN=
+MERCADOPAGO_WEBHOOK_SECRET=
+MELHOR_ENVIO_ENV=sandbox
+MELHOR_ENVIO_CLIENT_ID=
+MELHOR_ENVIO_CLIENT_SECRET=
+MELHOR_ENVIO_REDIRECT_URI=
+MELHOR_ENVIO_USER_AGENT=
+RESEND_API_KEY=
+RESEND_FROM_EMAIL=
+CRON_SECRET=
+```
+
+O Supabase já disponibiliza às Edge Functions `SUPABASE_URL`, chaves públicas e chaves secretas do projeto. A chave secreta nunca deve chegar ao navegador. Consulte [Secrets de Edge Functions](https://supabase.com/docs/guides/functions/secrets).
+
+### Configurados diretamente nos painéis
+
+| Credencial | Onde fica |
+|---|---|
+| Google Client ID e Client Secret | Supabase Auth > Providers > Google |
+| SMTP host, porta, usuário e senha do Resend | Supabase Auth > SMTP Settings |
+| Melhor Envio access/refresh tokens | Supabase Vault, gravados pelo fluxo OAuth |
+| DNS SPF/DKIM/DMARC | Provedor DNS do domínio |
+| Webhook secret Mercado Pago | Supabase Edge Function Secrets |
+
+Não colocar valores reais neste documento, no GitHub, em issues ou no código.
+
+---
+
+## 7. Implementação técnica
+
+As contas, dados externos e responsabilidades que precisam estar prontos em cada fase estão enumerados no [guia de contas e serviços externos](./CONTAS-E-SERVICOS-EXTERNOS.md#roteiro-enumerado-por-fases-de-desenvolvimento).
+
+<a id="checkout-fase-1"></a>
+
+### Fase 1 — Base, Storage e segurança
+
+> Antes de iniciar: deixe prontos os acessos indicados na [Fase 1 do guia de contas e serviços externos](./CONTAS-E-SERVICOS-EXTERNOS.md#contas-fase-1).
+
+- Versionar o schema remoto atual como baseline e criar migrations incrementais.
+- Gerar tipos TypeScript do banco.
+- Migrar imagens Base64 para Supabase Storage.
+- Separar cliente Supabase público do cliente administrativo das Edge Functions.
+- Substituir super admin baseado em `user_metadata`/e-mail por papéis protegidos.
+- Mover criação de usuários produtores para uma função administrativa server-side.
+- Corrigir RLS de produtos, produtores, perfis e Storage.
+
+<a id="checkout-fase-2"></a>
+
+### Fase 2 — Dados comerciais e estoque
+
+> Antes de iniciar: conclua a criação antecipada das contas e reúna os dados indicados na [Fase 2 do guia de contas e serviços externos](./CONTAS-E-SERVICOS-EXTERNOS.md#contas-fase-2).
+
+Ampliar `products` com:
+
+- `stock_quantity`;
+- peso, altura, largura e comprimento;
+- estado de disponibilidade para checkout.
+
+Criar:
+
+- `customer_profiles` e `customer_addresses`;
+- `producer_fulfillment_profiles`, separado de `producers` para não expor documentos e endereço de origem;
+- `orders` e `order_items` com valores em centavos e snapshots;
+- `shipments`, uma por produtor;
+- `inventory_reservations`;
+- `payment_attempts` e `refunds`;
+- `order_events`, `webhook_events` e `fulfillment_jobs`.
+
+Reservar estoque em função SQL transacional com bloqueio de linhas. Nunca calcular disponibilidade apenas no React.
+
+<a id="checkout-fase-3"></a>
+
+### Fase 3 — Autenticação e conta do cliente
+
+> Antes de iniciar: deixe Resend, domínio de e-mail e Google Cloud OAuth prontos conforme a [Fase 3 do guia de contas e serviços externos](./CONTAS-E-SERVICOS-EXTERNOS.md#contas-fase-3).
+
+- Login Google e e-mail/senha.
+- Confirmação e recuperação de e-mail via Resend/SMTP.
+- Página `/minha-conta/pedidos`.
+- Página `/minha-conta/pedidos/:id`.
+- RLS garantindo que cada cliente veja somente os próprios pedidos.
+
+<a id="checkout-fase-4"></a>
+
+### Fase 4 — Frete multi-origem
+
+> Antes de iniciar: deixe o aplicativo e as credenciais do Melhor Envio Sandbox prontos conforme a [Fase 4 do guia de contas e serviços externos](./CONTAS-E-SERVICOS-EXTERNOS.md#contas-fase-4).
+
+- Backend recarrega os produtos e agrupa por produtor.
+- Cada grupo usa o CEP e os dados protegidos daquele produtor.
+- Melhor Envio retorna opções por grupo.
+- Cliente escolhe uma opção para cada remessa.
+- O backend recota antes de criar o pedido; mudança de valor retorna `QUOTE_CHANGED`.
+- Após pagamento, criar, comprar e gerar uma etiqueta por remessa.
+- Falta de saldo ou falha externa cria `label_error` e permite nova tentativa pelo painel.
+
+<a id="checkout-fase-5"></a>
+
+### Fase 5 — Checkout e pagamento
+
+> Antes de iniciar: deixe a aplicação, as credenciais e os usuários de teste do Mercado Pago prontos conforme a [Fase 5 do guia de contas e serviços externos](./CONTAS-E-SERVICOS-EXTERNOS.md#contas-fase-5).
+
+- Criar rota `/checkout` com endereço, fretes, revisão, pagamento e confirmação.
+- Usar Card Payment Brick somente para tokenizar cartão.
+- Criar Pix pela Orders API e mostrar QR Code/Copia e Cola.
+- Backend recalcula produtos, estoque, fretes e total.
+- Criar order do Mercado Pago com chave de idempotência.
+- Webhook valida assinatura e consulta o estado real antes de atualizar o pedido.
+- Pix e reserva expiram em 30 minutos.
+- Pagamento aprovado após expiração tenta reservar novamente; sem estoque, estorna e alerta o super admin.
+
+<a id="checkout-fase-6"></a>
+
+### Fase 6 — Painéis e pós-venda
+
+> Antes de iniciar: deixe usuários, responsabilidades operacionais e regras de atendimento prontos conforme a [Fase 6 do guia de contas e serviços externos](./CONTAS-E-SERVICOS-EXTERNOS.md#contas-fase-6).
+
+- Super admin vê pedidos, pagamentos, falhas, remessas e reembolsos.
+- Produtor vê somente itens e remessas que pertencem a ele.
+- Produtor baixa etiqueta e registra preparo/postagem.
+- Reembolso parcial ocorre por remessa completa, nunca por valor livre digitado.
+- Remessa já postada bloqueia estorno automático e exige tratamento manual.
+- E-mails são enviados por fila idempotente.
+
+<a id="checkout-fase-7"></a>
+
+### Fase 7 — Migração de hospedagem e produção
+
+> Antes de iniciar: conclua a definição fiscal e prepare contas, credenciais, domínio e hospedagem de produção conforme a [Fase 7 do guia de contas e serviços externos](./CONTAS-E-SERVICOS-EXTERNOS.md#contas-fase-7).
+
+- Publicar o mesmo build Vite no Cloudflare Pages ou atualizar Vercel para Pro.
+- Atualizar domínio, redirects do Supabase e origens autorizadas do Google.
+- Trocar credenciais sandbox por produção somente nos Secrets.
+- Registrar webhooks de produção.
+- Executar compra real controlada de baixo valor.
+- Ativar alertas de uso nos serviços.
+
+Estimativa realista para todo o escopo: **20–30 dias úteis para um desenvolvedor**, sem contar espera por validação de contas, OAuth, textos jurídicos ou dados dos produtores.
+
+---
+
+## 8. Interfaces principais
+
+As rotas serão implementadas como Supabase Edge Functions, não em `/api` da Vercel:
+
+| Função | Responsabilidade |
+|---|---|
+| `shipping-quotes` | Validar carrinho/endereço e cotar uma origem por produtor |
+| `checkout-session` | Recotar, reservar estoque e criar sessão com total server-side |
+| `process-payment` | Criar a order Pix/cartão no Mercado Pago |
+| `mercadopago-webhook` | Validar e conciliar notificações |
+| `melhor-envio-oauth` | Callback e renovação de tokens |
+| `fulfillment-worker` | Comprar/gerar etiquetas e processar retentativas |
+| `orders` | Listar/detalhar pedidos do cliente autenticado |
+| `admin-orders` | Operação administrativa, postagem e reembolsos |
+
+Todas as funções públicas devem:
+
+- validar método HTTP, origem e schema do payload;
+- validar JWT quando exigido;
+- aplicar rate limit por usuário/IP conforme risco;
+- retornar erros no formato `{ "error": { "code": "...", "message": "..." } }`;
+- mascarar CPF, e-mail, telefone e tokens nos logs;
+- possuir idempotência para pagamento, webhook, estoque, etiqueta, e-mail e estorno.
+
+---
+
+## 9. Critérios para lançamento
+
+O checkout só pode receber clientes reais quando:
+
+1. imagens estiverem fora das linhas do banco;
+2. migrations e RLS estiverem versionadas e testadas;
+3. todos os produtores ativos tiverem origem, documento, peso, dimensões e estoque preenchidos;
+4. Google, confirmação de e-mail e recuperação de senha funcionarem no domínio final;
+5. Pix e cartão funcionarem em sandbox;
+6. webhook duplicado não duplicar estoque, pedido, etiqueta ou e-mail;
+7. duas compras concorrentes não venderem a última unidade duas vezes;
+8. cotação e etiqueta funcionarem para dois produtores no mesmo carrinho;
+9. produtor não conseguir acessar remessa de outro produtor;
+10. cliente não conseguir acessar pedido de outro cliente;
+11. manipular preço/frete no navegador não alterar o valor cobrado;
+12. reembolso total e parcial estiverem testados;
+13. domínio final, HTTPS, termos e privacidade estiverem publicados;
+14. hospedagem de produção for Cloudflare Pages ou Vercel Pro;
+15. houver backup recente e plano operacional para falhas externas;
+16. `npm run build` e `npm run lint` passarem sem erros.
+
+---
+
+## 10. Ordem recomendada
+
+1. Continuar usando a Vercel Hobby durante toda a implementação.
+2. Corrigir Storage, migrations e autorização antes de criar pagamentos.
+3. Configurar Google e Resend.
+4. Criar contas e aplicações sandbox no Mercado Pago e Melhor Envio.
+5. Implementar estoque, frete e checkout usando Edge Functions.
+6. Homologar o fluxo completo na URL da Vercel.
+7. Criar Cloudflare Pages e validar `*.pages.dev` sem mexer no domínio.
+8. Obter credenciais de produção e concluir textos/dados operacionais.
+9. Migrar o domínio para Cloudflare Pages — ou atualizar Vercel para Pro.
+10. Executar compra real controlada e abrir gradualmente ao público.
+
+Essa ordem mantém custo zero durante o desenvolvimento e deixa a migração de hospedagem para o final, sem obrigar a mover o backend ou alterar webhooks.
