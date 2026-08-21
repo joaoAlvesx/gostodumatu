@@ -447,13 +447,24 @@ O roteiro manual está em [`FASE-3-TESTE-LOCAL.md`](./FASE-3-TESTE-LOCAL.md).
 
 > Antes de iniciar: deixe o aplicativo e as credenciais do Melhor Envio Sandbox prontos conforme a [Fase 4 do guia de contas e serviços externos](./CONTAS-E-SERVICOS-EXTERNOS.md#contas-fase-4).
 
-- Backend recarrega os produtos e agrupa por produtor.
-- Cada grupo usa o CEP e os dados protegidos daquele produtor.
-- Melhor Envio retorna opções por grupo.
-- Cliente escolhe uma opção para cada remessa.
-- O backend recota antes de criar o pedido; mudança de valor retorna `QUOTE_CHANGED`.
-- Após pagamento, criar, comprar e gerar uma etiqueta por remessa.
-- Falta de saldo ou falha externa cria `label_error` e permite nova tentativa pelo painel.
+- [x] Backend recarrega os produtos e agrupa por produtor.
+- [x] Cada grupo usa o CEP e os dados protegidos daquele produtor.
+- [x] Melhor Envio retorna opções por grupo.
+- [x] Backend aceita uma opção para cada remessa.
+- [x] O backend recota; mudança de valor retorna `QUOTE_CHANGED`.
+- [x] Após pagamento, criar, comprar, gerar e imprimir uma etiqueta por remessa.
+- [x] Falta de saldo ou falha externa cria `label_error` e permite nova tentativa.
+- [x] OAuth com `state`, Vault e renovação automática dos tokens.
+- [ ] Aplicar no projeto remoto, autorizar a conta e homologar o ciclo na API sandbox real.
+
+Validação local reproduzível, sem chamada externa:
+
+```bash
+npm run local:setup
+npm run validate:phase4
+```
+
+O roteiro completo está em [`FASE-4-TESTE-LOCAL.md`](./FASE-4-TESTE-LOCAL.md).
 
 <a id="checkout-fase-5"></a>
 

@@ -13,6 +13,7 @@ const OTHER_PRODUCT_ID = "20000000-0000-4000-8000-000000000002";
 const CUSTOMER_ADDRESS_ID = "30000000-0000-4000-8000-000000000001";
 const CUSTOMER_ORDER_ID = "40000000-0000-4000-8000-000000000001";
 const CUSTOMER_ORDER_ITEM_ID = "50000000-0000-4000-8000-000000000001";
+const CUSTOMER_SHIPMENT_ID = "60000000-0000-4000-8000-000000000001";
 
 function localStatus() {
   const output = execFileSync(
@@ -168,6 +169,7 @@ async function main() {
     full_name: "Cliente de Teste",
     email: CUSTOMER_EMAIL,
     phone: "67977777777",
+    tax_id: "98765432100",
   }).eq("id", customerUser.id);
   if (customerProfileError) throw customerProfileError;
 
@@ -216,6 +218,7 @@ async function main() {
       name: "Cliente de Teste",
       email: CUSTOMER_EMAIL,
       phone: "67977777777",
+      tax_id: "98765432100",
     },
     shipping_address_snapshot: shippingAddressSnapshot,
     idempotency_key: "local-customer-demo-order",
@@ -241,6 +244,28 @@ async function main() {
     quantity: 1,
   });
   if (customerOrderItemError) throw customerOrderItemError;
+
+  const { error: customerShipmentError } = await admin.from("shipments").upsert({
+    id: CUSTOMER_SHIPMENT_ID,
+    order_id: CUSTOMER_ORDER_ID,
+    producer_id: OWN_PRODUCER_ID,
+    status: "pending",
+    origin_address_snapshot: {
+      postal_code: "79240000",
+      street: "Rua de Teste",
+      number: "100",
+      neighborhood: "Centro",
+      city: "Jardim",
+      state: "MS",
+      contact_name: "Produtor de Teste",
+      contact_phone: "67999999999",
+    },
+    destination_address_snapshot: shippingAddressSnapshot,
+    package_snapshot: {},
+    shipping_amount_cents: 0,
+    provider_metadata: {},
+  });
+  if (customerShipmentError) throw customerShipmentError;
 
   console.log("Ambiente local preparado.");
   console.log(`Admin: ${ADMIN_EMAIL} / ${TEST_PASSWORD}`);

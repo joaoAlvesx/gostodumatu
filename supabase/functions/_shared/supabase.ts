@@ -25,18 +25,31 @@ export function createAdminClient(): SupabaseClient {
   );
 }
 
-export async function requireSuperAdmin(request: Request): Promise<User> {
+export async function requireAuthenticatedUser(request: Request): Promise<User> {
   const authorization = request.headers.get("authorization");
   if (!authorization?.startsWith("Bearer ")) throw new Error("UNAUTHORIZED");
 
   const client = createPublicClient(authorization);
-  const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) throw new Error("UNAUTHORIZED");
+  const { data, error } = await client.auth.getUser();
+  if (error || !data.user) throw new Error("UNAUTHORIZED");
+  return data.user;
+}
+
+export function requestUsesServiceRole(request: Request): boolean {
+  const authorization = request.headers.get("authorization");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  return Boolean(serviceRoleKey && authorization === `Bearer ${serviceRoleKey}`);
+}
+
+export async function requireSuperAdmin(request: Request): Promise<User> {
+  const user = await requireAuthenticatedUser(request);
+  const authorization = request.headers.get("authorization")!;
+  const client = createPublicClient(authorization);
 
   const { data: isSuperAdmin, error: roleError } = await client.rpc("has_role", {
     required_role: "super_admin",
   });
   if (roleError || !isSuperAdmin) throw new Error("FORBIDDEN");
 
-  return userData.user;
+  return user;
 }

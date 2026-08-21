@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Plus, Trash2, Pencil, X, LogOut, Store, Package, UserCheck, KeyRound, Truck } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Pencil, X, LogOut, Store, Package, UserCheck, KeyRound, Truck, PlugZap, RefreshCw, ExternalLink } from "lucide-react";
 import { loadProducts, saveProducts, formatPrice, deleteProductFromDatabase, supabase, type Product, type ProductCheckoutStatus } from "@/lib/products";
 import { loadProducers, createProducerWithAccount, loadProducerByUserId, saveProducer, deleteProducer, type Producer } from "@/lib/producers";
 import {
@@ -19,6 +19,12 @@ import {
 } from "@/lib/fulfillment";
 import { useToast } from "@/hooks/use-toast";
 import { currentUserIsSuperAdmin } from "@/lib/auth";
+import {
+  beginMelhorEnvioAuthorization,
+  loadMelhorEnvioStatus,
+  refreshMelhorEnvioAuthorization,
+  type MelhorEnvioConnectionStatus,
+} from "@/lib/melhorEnvio";
 import {
   deleteCatalogImages,
   uploadProducerImage,
@@ -90,6 +96,8 @@ const Admin = () => {
   const [myStoreImage, setMyStoreImage] = useState<File | null>(null);
   const [selectedFulfillmentProducerId, setSelectedFulfillmentProducerId] = useState("");
   const [fulfillmentForm, setFulfillmentForm] = useState<FulfillmentProfile | null>(null);
+  const [melhorEnvioStatus, setMelhorEnvioStatus] = useState<MelhorEnvioConnectionStatus | null>(null);
+  const [melhorEnvioLoading, setMelhorEnvioLoading] = useState(false);
   
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
 
@@ -141,6 +149,76 @@ const Admin = () => {
       cancelled = true;
     };
   }, [currentProducer?.id, isSuperAdmin, producers, selectedFulfillmentProducerId]);
+
+  const reloadMelhorEnvioStatus = useCallback(async () => {
+    setMelhorEnvioLoading(true);
+    try {
+      setMelhorEnvioStatus(await loadMelhorEnvioStatus());
+    } catch (error) {
+      toast({
+        title: "Integração do Melhor Envio indisponível",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setMelhorEnvioLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    if (!isSuperAdmin) {
+      setMelhorEnvioStatus(null);
+      return;
+    }
+    void reloadMelhorEnvioStatus();
+
+    const query = new URLSearchParams(window.location.search);
+    const result = query.get("melhor_envio");
+    if (result) {
+      toast({
+        title: result === "connected" ? "Melhor Envio conectado" : "Autorização não concluída",
+        description: result === "connected"
+          ? "Access Token e Refresh Token foram guardados no Vault."
+          : `Código: ${query.get("code") ?? "AUTHORIZATION_ERROR"}`,
+        variant: result === "connected" ? "default" : "destructive",
+      });
+      query.delete("melhor_envio");
+      query.delete("code");
+      const nextUrl = `${window.location.pathname}${query.size ? `?${query}` : ""}${window.location.hash}`;
+      window.history.replaceState({}, "", nextUrl);
+    }
+  }, [isSuperAdmin, reloadMelhorEnvioStatus, toast]);
+
+  const handleMelhorEnvioAuthorize = async () => {
+    setMelhorEnvioLoading(true);
+    try {
+      const authorization = await beginMelhorEnvioAuthorization();
+      window.location.assign(authorization.authorizationUrl);
+    } catch (error) {
+      setMelhorEnvioLoading(false);
+      toast({
+        title: "Não foi possível iniciar a autorização",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleMelhorEnvioRefresh = async () => {
+    setMelhorEnvioLoading(true);
+    try {
+      setMelhorEnvioStatus(await refreshMelhorEnvioAuthorization());
+      toast({ title: "Token do Melhor Envio renovado" });
+    } catch (error) {
+      toast({
+        title: "Não foi possível renovar o token",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setMelhorEnvioLoading(false);
+    }
+  };
 
   // Verifica a sessão atual no Supabase Auth
   const checkSession = useCallback(async () => {
@@ -561,7 +639,7 @@ const Admin = () => {
 
       <main className="container mx-auto px-4 py-8">
         <Tabs defaultValue="products" className="space-y-8">
-          <TabsList className="grid w-full max-w-2xl grid-cols-3">
+          <TabsList className={`grid w-full ${isSuperAdmin ? "max-w-4xl grid-cols-4" : "max-w-2xl grid-cols-3"}`}>
             <TabsTrigger value="products" className="flex items-center gap-2">
               <Package className="h-4 w-4" /> Seus Produtos
             </TabsTrigger>
@@ -572,6 +650,11 @@ const Admin = () => {
             <TabsTrigger value="fulfillment" className="flex items-center gap-2">
               <Truck className="h-4 w-4" /> Expedição
             </TabsTrigger>
+            {isSuperAdmin && (
+              <TabsTrigger value="integrations" className="flex items-center gap-2">
+                <PlugZap className="h-4 w-4" /> Integrações
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* TAB 1: MEUS PRODUTOS */}
@@ -1162,6 +1245,69 @@ const Admin = () => {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {isSuperAdmin && (
+            <TabsContent value="integrations">
+              <Card className="max-w-4xl">
+                <CardHeader>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <CardTitle className="font-artisan flex items-center gap-2">
+                        <PlugZap className="h-5 w-5 text-primary" /> Melhor Envio
+                      </CardTitle>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        OAuth do frete. Os tokens rotativos ficam criptografados no Vault e nunca chegam ao navegador.
+                      </p>
+                    </div>
+                    <Badge variant={melhorEnvioStatus?.connected ? "default" : "secondary"}>
+                      {melhorEnvioStatus?.connected ? "Conectado" : "Não conectado"}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  {melhorEnvioStatus && (
+                    <div className="rounded-md border border-border p-4 text-sm space-y-2">
+                      <p><span className="font-medium">Ambiente:</span> {melhorEnvioStatus.environment}</p>
+                      <div>
+                        <p className="font-medium">Callback cadastrada no aplicativo:</p>
+                        <code className="mt-1 block break-all rounded bg-muted p-2 text-xs">
+                          {melhorEnvioStatus.callbackUrl}
+                        </code>
+                      </div>
+                      {melhorEnvioStatus.connection && (
+                        <>
+                          <p>
+                            <span className="font-medium">Access Token válido até:</span>{" "}
+                            {new Date(melhorEnvioStatus.connection.access_expires_at).toLocaleString("pt-BR")}
+                          </p>
+                          <p>
+                            <span className="font-medium">Refresh Token válido até:</span>{" "}
+                            {new Date(melhorEnvioStatus.connection.refresh_expires_at).toLocaleString("pt-BR")}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-3">
+                    <Button onClick={handleMelhorEnvioAuthorize} disabled={melhorEnvioLoading}>
+                      <ExternalLink className="mr-2 h-4 w-4" />
+                      {melhorEnvioStatus?.connected ? "Autorizar novamente" : "Autorizar no Melhor Envio"}
+                    </Button>
+                    <Button variant="outline" onClick={reloadMelhorEnvioStatus} disabled={melhorEnvioLoading}>
+                      <RefreshCw className={`mr-2 h-4 w-4 ${melhorEnvioLoading ? "animate-spin" : ""}`} />
+                      Atualizar status
+                    </Button>
+                    {melhorEnvioStatus?.connected && (
+                      <Button variant="outline" onClick={handleMelhorEnvioRefresh} disabled={melhorEnvioLoading}>
+                        Renovar token agora
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
         </Tabs>
       </main>
     </div>

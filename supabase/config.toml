@@ -17,3 +17,12 @@ verify_jwt = true
 
 [functions.migrate-catalog-images]
 verify_jwt = true
+
+[functions.melhor-envio-oauth]
+verify_jwt = false
+
+[functions.shipping-quotes]
+verify_jwt = true
+
+[functions.fulfillment-worker]
+verify_jwt = true

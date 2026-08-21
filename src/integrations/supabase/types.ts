@@ -262,6 +262,72 @@ export type Database = {
           },
         ]
       }
+      melhor_envio_oauth_connections: {
+        Row: {
+          access_expires_at: string
+          access_token_secret_id: string
+          connected_at: string
+          connected_by: string | null
+          id: string
+          refresh_expires_at: string
+          refresh_locked_at: string | null
+          refresh_token_secret_id: string
+          scope: string | null
+          token_type: string
+          updated_at: string
+        }
+        Insert: {
+          access_expires_at: string
+          access_token_secret_id: string
+          connected_at?: string
+          connected_by?: string | null
+          id?: string
+          refresh_expires_at: string
+          refresh_locked_at?: string | null
+          refresh_token_secret_id: string
+          scope?: string | null
+          token_type?: string
+          updated_at?: string
+        }
+        Update: {
+          access_expires_at?: string
+          access_token_secret_id?: string
+          connected_at?: string
+          connected_by?: string | null
+          id?: string
+          refresh_expires_at?: string
+          refresh_locked_at?: string | null
+          refresh_token_secret_id?: string
+          scope?: string | null
+          token_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      melhor_envio_oauth_states: {
+        Row: {
+          consumed_at: string | null
+          created_at: string
+          created_by: string
+          expires_at: string
+          state_hash: string
+        }
+        Insert: {
+          consumed_at?: string | null
+          created_at?: string
+          created_by: string
+          expires_at: string
+          state_hash: string
+        }
+        Update: {
+          consumed_at?: string | null
+          created_at?: string
+          created_by?: string
+          expires_at?: string
+          state_hash?: string
+        }
+        Relationships: []
+      }
       order_events: {
         Row: {
           actor_id: string | null
@@ -734,11 +800,16 @@ export type Database = {
           destination_address_snapshot: Json
           external_shipment_id: string | null
           id: string
+          label_error: string | null
           label_url: string | null
           order_id: string
           origin_address_snapshot: Json
           package_snapshot: Json
           producer_id: string
+          provider_metadata: Json
+          quote_session_id: string | null
+          quoted_at: string | null
+          service_id: number | null
           service_name: string | null
           shipped_at: string | null
           shipping_amount_cents: number
@@ -753,11 +824,16 @@ export type Database = {
           destination_address_snapshot: Json
           external_shipment_id?: string | null
           id?: string
+          label_error?: string | null
           label_url?: string | null
           order_id: string
           origin_address_snapshot: Json
           package_snapshot?: Json
           producer_id: string
+          provider_metadata?: Json
+          quote_session_id?: string | null
+          quoted_at?: string | null
+          service_id?: number | null
           service_name?: string | null
           shipped_at?: string | null
           shipping_amount_cents?: number
@@ -772,11 +848,16 @@ export type Database = {
           destination_address_snapshot?: Json
           external_shipment_id?: string | null
           id?: string
+          label_error?: string | null
           label_url?: string | null
           order_id?: string
           origin_address_snapshot?: Json
           package_snapshot?: Json
           producer_id?: string
+          provider_metadata?: Json
+          quote_session_id?: string | null
+          quoted_at?: string | null
+          service_id?: number | null
           service_name?: string | null
           shipped_at?: string | null
           shipping_amount_cents?: number
@@ -797,6 +878,54 @@ export type Database = {
             columns: ["producer_id"]
             isOneToOne: false
             referencedRelation: "producers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipments_quote_session_id_fkey"
+            columns: ["quote_session_id"]
+            isOneToOne: false
+            referencedRelation: "shipping_quote_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shipping_quote_sessions: {
+        Row: {
+          cart_fingerprint: string
+          cart_snapshot: Json
+          created_at: string
+          customer_id: string
+          destination_postal_code: string
+          expires_at: string
+          id: string
+          quotes_snapshot: Json
+        }
+        Insert: {
+          cart_fingerprint: string
+          cart_snapshot: Json
+          created_at?: string
+          customer_id: string
+          destination_postal_code: string
+          expires_at: string
+          id?: string
+          quotes_snapshot: Json
+        }
+        Update: {
+          cart_fingerprint?: string
+          cart_snapshot?: Json
+          created_at?: string
+          customer_id?: string
+          destination_postal_code?: string
+          expires_at?: string
+          id?: string
+          quotes_snapshot?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipping_quote_sessions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -874,6 +1003,11 @@ export type Database = {
         Args: { target_producer_id: string }
         Returns: boolean
       }
+      claim_melhor_envio_token_refresh: { Args: never; Returns: boolean }
+      consume_melhor_envio_oauth_state: {
+        Args: { request_state_hash: string }
+        Returns: string
+      }
       create_order_with_inventory: {
         Args: {
           cart_items: Json
@@ -887,11 +1021,24 @@ export type Database = {
         }
         Returns: string
       }
+      delete_expired_shipping_quotes: { Args: never; Returns: number }
       expire_inventory_reservations: { Args: never; Returns: number }
+      get_melhor_envio_oauth_tokens: {
+        Args: never
+        Returns: {
+          access_expires_at: string
+          access_token: string
+          refresh_expires_at: string
+          refresh_token: string
+          scope: string
+          token_type: string
+        }[]
+      }
       has_role: {
         Args: { required_role: Database["public"]["Enums"]["app_role"] }
         Returns: boolean
       }
+      release_melhor_envio_token_refresh: { Args: never; Returns: undefined }
       reserve_order_inventory: {
         Args: { reservation_expires_at?: string; target_order_id: string }
         Returns: {
@@ -899,6 +1046,18 @@ export type Database = {
           product_id: string
           reserved_quantity: number
         }[]
+      }
+      store_melhor_envio_oauth_tokens: {
+        Args: {
+          access_expires_at: string
+          access_token: string
+          connected_by?: string
+          granted_scope?: string
+          refresh_expires_at: string
+          refresh_token: string
+          token_type?: string
+        }
+        Returns: undefined
       }
     }
     Enums: {
@@ -936,6 +1095,7 @@ export type Database = {
         | "pending"
         | "quoted"
         | "label_pending"
+        | "label_error"
         | "label_created"
         | "shipped"
         | "delivered"
@@ -1114,6 +1274,7 @@ export const Constants = {
         "pending",
         "quoted",
         "label_pending",
+        "label_error",
         "label_created",
         "shipped",
         "delivered",

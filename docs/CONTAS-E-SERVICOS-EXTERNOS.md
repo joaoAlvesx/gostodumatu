@@ -164,9 +164,9 @@ A implementação fará:
 
 Você precisa ter pronto:
 
-- [ ] conta do Melhor Envio Sandbox criada na Fase 2;
-- [ ] criar o aplicativo OAuth usando a callback entregue pela implementação;
-- [ ] cadastrar Client ID e Client Secret de forma segura;
+- [x] conta do Melhor Envio Sandbox criada na Fase 2;
+- [x] criar o aplicativo OAuth usando a callback entregue pela implementação;
+- [x] cadastrar Client ID e Client Secret de forma segura;
 - [ ] autorizar o aplicativo e permitir o armazenamento seguro dos tokens;
 - [ ] revisar endereço, CEP, peso e embalagem de cada produtor/produto;
 - [ ] indicar quais transportadoras ou modalidades não devem aparecer ao cliente.
@@ -180,6 +180,8 @@ A implementação fará:
 - escolha de frete separada por pacote;
 - renovação automática dos tokens OAuth;
 - simulação de compra, geração, impressão e rastreio da etiqueta.
+
+**Status local em 21/08/2026:** callback OAuth, Vault, renovação de tokens, cotação multi-origem, recotação e ciclo idempotente de etiqueta estão implementados e validados com mock local. Falta aplicar no Supabase remoto, autorizar o aplicativo e homologar as chamadas no sandbox real. Consulte [`FASE-4-TESTE-LOCAL.md`](./FASE-4-TESTE-LOCAL.md).
 
 **A fase termina quando:** um carrinho com dois produtores gerar dois pacotes, cada um com opções e preço de frete próprios, sem expor endereço ou tokens no navegador.
 
