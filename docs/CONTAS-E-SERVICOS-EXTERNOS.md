@@ -197,15 +197,15 @@ Você precisa ter pronto:
 
 - [x] Conta Negócio do Mercado Pago criada e validada na Fase 2;
 - [x] aplicação `Gostudumatu Checkout` criada no painel de desenvolvedores;
-- [ ] cadastrar Public Key e Access Token de **teste** com os nomes exatos informados pela implementação;
+- [x] cadastrar Public Key e Access Token de **teste** com os nomes exatos informados pela implementação;
 - [ ] comprador e vendedor de teste disponíveis;
-- [ ] webhook de teste cadastrado usando a URL entregue pela implementação;
+- [x] webhook de teste cadastrado usando a URL entregue pela implementação;
 - [ ] definir meios de pagamento aceitos, parcelamento e prazo do Pix;
 - [ ] definir quem absorve juros/tarifas quando houver.
 
 Não cadastre ainda o Access Token de produção.
 
-A implementação fará:
+A implementação inclui:
 
 - página completa de checkout;
 - recálculo de preço, estoque e frete no backend;
@@ -214,7 +214,7 @@ A implementação fará:
 - idempotência e validação do webhook;
 - expiração da reserva e estorno quando necessário.
 
-**Status em 21/08/2026:** checkout, Orders API, Pix, Card Payment Brick, webhook assinado, reserva, cron e estorno automático estão implementados e validados localmente com mocks. Para publicar, ainda faltam os secrets `MERCADOPAGO_PUBLIC_KEY`, `MERCADOPAGO_ACCESS_TOKEN` e `MERCADOPAGO_WEBHOOK_SECRET`, o cadastro do webhook e a homologação com usuários de teste. A URL e o roteiro estão em [`FASE-5-TESTE-LOCAL.md`](./FASE-5-TESTE-LOCAL.md).
+**Status em 21/08/2026:** checkout, Orders API, Pix, Card Payment Brick, webhook assinado, reserva, cron e estorno automático estão implementados e validados localmente com mocks. A migration e as três Edge Functions da fase estão publicadas no Supabase real; os secrets de teste e o webhook estão cadastrados, e o frontend está publicado na Vercel. Resta a homologação com comprador e vendedor de teste nos cenários descritos em [`FASE-5-TESTE-LOCAL.md`](./FASE-5-TESTE-LOCAL.md).
 
 **A fase termina quando:** pagamentos de teste aprovados, recusados, pendentes e expirados atualizarem corretamente o pedido, sem duplicar cobrança ou estoque.
 
