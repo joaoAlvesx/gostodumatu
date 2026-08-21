@@ -106,13 +106,13 @@ A implementação fará:
 
 Você precisa ter pronto:
 
-- [ ] criar a [Conta Negócio do Mercado Pago](#1-mercado-pago) com CPF;
-- [ ] concluir a validação de identidade e ativar dois fatores no Mercado Pago;
-- [ ] criar a conta do [Melhor Envio Sandbox](#2-melhor-envio) com CPF;
-- [ ] informar cada produtor, endereço/CEP de origem e contato operacional;
-- [ ] informar estoque, peso, altura, largura e comprimento embalado de cada produto;
-- [ ] informar se algum produto precisa de embalagem ou restrição especial;
-- [ ] iniciar a consulta com o contador sobre quem será o vendedor fiscal, sem precisar concluir ainda.
+- [x] criar a [Conta Negócio do Mercado Pago](#1-mercado-pago) com CPF;
+- [x] concluir a validação de identidade e ativar dois fatores no Mercado Pago;
+- [x] criar a conta do [Melhor Envio Sandbox](#2-melhor-envio) com CPF;
+- [x] informar cada produtor, endereço/CEP de origem e contato operacional;
+- [x] informar estoque, peso, altura, largura e comprimento embalado de cada produto;
+- [x] informar se algum produto precisa de embalagem ou restrição especial;
+- [x] iniciar a consulta com o contador sobre quem será o vendedor fiscal, sem precisar concluir ainda.
 
 O Mercado Pago é criado nesta fase para que a validação da conta não bloqueie a Fase 5. O Melhor Envio Sandbox é criado agora para estar disponível quando a callback OAuth for implementada na Fase 4. Nenhuma cobrança ou etiqueta real será feita.
 

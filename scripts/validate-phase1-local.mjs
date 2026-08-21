@@ -60,6 +60,20 @@ async function main() {
     .single();
   assert(ownProducer?.id === OWN_PRODUCER_ID, "produtor encontra apenas seu vínculo operacional");
 
+  const { error: ownStoreUpdateError } = await producer
+    .from("producers")
+    .update({ bio: "alteração autorizada na loja" })
+    .eq("id", OWN_PRODUCER_ID);
+  const { data: ownStore } = await service
+    .from("producers")
+    .select("bio")
+    .eq("id", OWN_PRODUCER_ID)
+    .single();
+  assert(
+    !ownStoreUpdateError && ownStore?.bio === "alteração autorizada na loja",
+    "produtor altera os dados da própria loja",
+  );
+
   const { error: anonymousWriteError } = await anonymous.from("products").insert({
     name: "Tentativa anônima",
     price: 1,
