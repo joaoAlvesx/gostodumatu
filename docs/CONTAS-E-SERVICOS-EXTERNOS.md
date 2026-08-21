@@ -167,7 +167,7 @@ Você precisa ter pronto:
 - [x] conta do Melhor Envio Sandbox criada na Fase 2;
 - [x] criar o aplicativo OAuth usando a callback entregue pela implementação;
 - [x] cadastrar Client ID e Client Secret de forma segura;
-- [ ] autorizar o aplicativo e permitir o armazenamento seguro dos tokens;
+- [x] autorizar o aplicativo e permitir o armazenamento seguro dos tokens;
 - [ ] revisar endereço, CEP, peso e embalagem de cada produtor/produto;
 - [ ] indicar quais transportadoras ou modalidades não devem aparecer ao cliente.
 
@@ -181,7 +181,7 @@ A implementação fará:
 - renovação automática dos tokens OAuth;
 - simulação de compra, geração, impressão e rastreio da etiqueta.
 
-**Status local em 21/08/2026:** callback OAuth, Vault, renovação de tokens, cotação multi-origem, recotação e ciclo idempotente de etiqueta estão implementados e validados com mock local. Falta aplicar no Supabase remoto, autorizar o aplicativo e homologar as chamadas no sandbox real. Consulte [`FASE-4-TESTE-LOCAL.md`](./FASE-4-TESTE-LOCAL.md).
+**Status em 21/08/2026:** callback OAuth, Vault, renovação de tokens, cotação multi-origem, recotação e ciclo idempotente de etiqueta estão implementados. A integração foi publicada e autorizada no sandbox; falta homologar a compra completa de uma etiqueta real. Consulte [`FASE-4-TESTE-LOCAL.md`](./FASE-4-TESTE-LOCAL.md).
 
 **A fase termina quando:** um carrinho com dois produtores gerar dois pacotes, cada um com opções e preço de frete próprios, sem expor endereço ou tokens no navegador.
 
@@ -195,9 +195,9 @@ A implementação fará:
 
 Você precisa ter pronto:
 
-- [ ] Conta Negócio do Mercado Pago criada e validada na Fase 2;
-- [ ] aplicação `Gostudumatu Checkout` criada no painel de desenvolvedores;
-- [ ] Public Key e Access Token de **teste** cadastrados nos ambientes corretos;
+- [x] Conta Negócio do Mercado Pago criada e validada na Fase 2;
+- [x] aplicação `Gostudumatu Checkout` criada no painel de desenvolvedores;
+- [ ] cadastrar Public Key e Access Token de **teste** com os nomes exatos informados pela implementação;
 - [ ] comprador e vendedor de teste disponíveis;
 - [ ] webhook de teste cadastrado usando a URL entregue pela implementação;
 - [ ] definir meios de pagamento aceitos, parcelamento e prazo do Pix;
@@ -213,6 +213,8 @@ A implementação fará:
 - cartão tokenizado pelo componente oficial;
 - idempotência e validação do webhook;
 - expiração da reserva e estorno quando necessário.
+
+**Status em 21/08/2026:** checkout, Orders API, Pix, Card Payment Brick, webhook assinado, reserva, cron e estorno automático estão implementados e validados localmente com mocks. Para publicar, ainda faltam os secrets `MERCADOPAGO_PUBLIC_KEY`, `MERCADOPAGO_ACCESS_TOKEN` e `MERCADOPAGO_WEBHOOK_SECRET`, o cadastro do webhook e a homologação com usuários de teste. A URL e o roteiro estão em [`FASE-5-TESTE-LOCAL.md`](./FASE-5-TESTE-LOCAL.md).
 
 **A fase termina quando:** pagamentos de teste aprovados, recusados, pendentes e expirados atualizarem corretamente o pedido, sem duplicar cobrança ou estoque.
 
@@ -327,7 +329,13 @@ Não é necessário ter CNPJ para começar os testes. A abertura da conta não t
 | Public Key de produção | Checkout real | Não, mas somente no ambiente de produção |
 | Access Token de produção | Cobranças reais | **Sim, crítico** |
 
-A URL do webhook será criada no Supabase. Quando a função estiver pronta, a implementação fornecerá o endereço exato para cadastrar no painel do Mercado Pago.
+A URL de webhook de teste já implementada é:
+
+```text
+https://vzvbcewvdqcerogwsjeu.supabase.co/functions/v1/mercadopago-webhook
+```
+
+No painel, selecione o tópico **Order (Mercado Pago)** e cadastre o segredo gerado no Supabase como `MERCADOPAGO_WEBHOOK_SECRET`.
 
 ### Como entregar acesso com segurança
 

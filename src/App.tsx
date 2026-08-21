@@ -21,6 +21,7 @@ import UpdatePassword from "./pages/UpdatePassword";
 import CustomerAccount from "./pages/CustomerAccount";
 import CustomerOrders from "./pages/CustomerOrders";
 import CustomerOrderDetail from "./pages/CustomerOrderDetail";
+import Checkout from "./pages/Checkout";
 
 const queryClient = new QueryClient();
 
@@ -47,6 +48,7 @@ const App = () => (
                 <Route path="/minha-conta" element={<ProtectedRoute><CustomerAccount /></ProtectedRoute>} />
                 <Route path="/minha-conta/pedidos" element={<ProtectedRoute><CustomerOrders /></ProtectedRoute>} />
                 <Route path="/minha-conta/pedidos/:id" element={<ProtectedRoute><CustomerOrderDetail /></ProtectedRoute>} />
+                <Route path="/checkout" element={<ProtectedRoute><Checkout /></ProtectedRoute>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </BrowserRouter>

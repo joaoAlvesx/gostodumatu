@@ -1,26 +1,18 @@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Minus, Plus, Trash2, MessageCircle } from "lucide-react";
+import { Minus, Plus, Trash2, CreditCard } from "lucide-react";
 import { useCart } from "@/context/CartContext";
 import { formatPrice } from "@/lib/products";
-import { useToast } from "@/hooks/use-toast";
-
-const WHATSAPP_NUMBER = "5567996850272";
+import { useNavigate } from "react-router-dom";
 
 const CartDrawer = () => {
   const { items, isOpen, closeCart, updateQuantity, removeItem, total, clear } = useCart();
-  const { toast } = useToast();
+  const navigate = useNavigate();
 
-  const sendToWhatsApp = () => {
+  const goToCheckout = () => {
     if (items.length === 0) return;
-    const lines = items.map(
-      (i) => `• ${i.quantity}x ${i.product.name} — ${formatPrice(i.product.price * i.quantity)}`
-    );
-    const message =
-      `Olá! Gostaria de fazer um pedido na *Gostudumatu*:\n\n${lines.join("\n")}\n\n*Total: ${formatPrice(total)}*\n\nAguardo instruções para pagamento e entrega. Obrigado!`;
-    const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
-    window.open(url, "_blank");
-    toast({ title: "Pedido enviado!", description: "Continue a conversa no WhatsApp." });
+    closeCart();
+    navigate("/checkout");
   };
 
   return (
@@ -86,18 +78,18 @@ const CartDrawer = () => {
               <span className="text-primary">{formatPrice(total)}</span>
             </div>
             <Button
-              onClick={sendToWhatsApp}
+              onClick={goToCheckout}
               className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
               size="lg"
             >
-              <MessageCircle className="h-5 w-5 mr-2" />
-              Finalizar pelo WhatsApp
+              <CreditCard className="h-5 w-5 mr-2" />
+              Ir para o checkout
             </Button>
             <Button variant="ghost" size="sm" onClick={clear} className="w-full">
               Limpar carrinho
             </Button>
             <p className="text-xs text-muted-foreground text-center">
-              O pagamento e frete serão combinados diretamente pelo WhatsApp.
+              Frete e pagamento serão confirmados com segurança no checkout.
             </p>
           </SheetFooter>
         )}

@@ -438,6 +438,7 @@ export type Database = {
           idempotency_key: string
           inventory_expires_at: string | null
           order_number: number
+          paid_at: string | null
           shipping_address_snapshot: Json
           shipping_amount_cents: number
           status: Database["public"]["Enums"]["order_status"]
@@ -455,6 +456,7 @@ export type Database = {
           idempotency_key: string
           inventory_expires_at?: string | null
           order_number?: number
+          paid_at?: string | null
           shipping_address_snapshot: Json
           shipping_amount_cents?: number
           status?: Database["public"]["Enums"]["order_status"]
@@ -472,6 +474,7 @@ export type Database = {
           idempotency_key?: string
           inventory_expires_at?: string | null
           order_number?: number
+          paid_at?: string | null
           shipping_address_snapshot?: Json
           shipping_amount_cents?: number
           status?: Database["public"]["Enums"]["order_status"]
@@ -493,6 +496,7 @@ export type Database = {
         Row: {
           amount_cents: number
           created_at: string
+          expires_at: string | null
           id: string
           idempotency_key: string
           order_id: string
@@ -508,6 +512,7 @@ export type Database = {
         Insert: {
           amount_cents: number
           created_at?: string
+          expires_at?: string | null
           id?: string
           idempotency_key: string
           order_id: string
@@ -523,6 +528,7 @@ export type Database = {
         Update: {
           amount_cents?: number
           created_at?: string
+          expires_at?: string | null
           id?: string
           idempotency_key?: string
           order_id?: string
@@ -1004,6 +1010,16 @@ export type Database = {
         Returns: boolean
       }
       claim_melhor_envio_token_refresh: { Args: never; Returns: boolean }
+      complete_automatic_refund: {
+        Args: {
+          external_refund_id: string
+          refund_succeeded: boolean
+          sanitized_response?: Json
+          target_order_id: string
+          target_payment_attempt_id: string
+        }
+        Returns: Database["public"]["Enums"]["order_status"]
+      }
       consume_melhor_envio_oauth_state: {
         Args: { request_state_hash: string }
         Returns: string
@@ -1023,6 +1039,18 @@ export type Database = {
       }
       delete_expired_shipping_quotes: { Args: never; Returns: number }
       expire_inventory_reservations: { Args: never; Returns: number }
+      finalize_paid_order: {
+        Args: {
+          external_order_id: string
+          external_payment_id: string
+          external_status: string
+          external_status_detail: string
+          sanitized_response?: Json
+          target_order_id: string
+          target_payment_attempt_id: string
+        }
+        Returns: string
+      }
       get_melhor_envio_oauth_tokens: {
         Args: never
         Returns: {
@@ -1037,6 +1065,18 @@ export type Database = {
       has_role: {
         Args: { required_role: Database["public"]["Enums"]["app_role"] }
         Returns: boolean
+      }
+      record_payment_state: {
+        Args: {
+          external_order_id: string
+          external_payment_id: string
+          external_status: string
+          external_status_detail: string
+          sanitized_response?: Json
+          target_order_id: string
+          target_payment_attempt_id: string
+        }
+        Returns: Database["public"]["Enums"]["order_status"]
       }
       release_melhor_envio_token_refresh: { Args: never; Returns: undefined }
       reserve_order_inventory: {

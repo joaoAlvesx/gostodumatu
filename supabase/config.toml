@@ -24,5 +24,14 @@ verify_jwt = false
 [functions.shipping-quotes]
 verify_jwt = true
 
+[functions.checkout-session]
+verify_jwt = true
+
+[functions.process-payment]
+verify_jwt = true
+
+[functions.mercadopago-webhook]
+verify_jwt = false
+
 [functions.fulfillment-worker]
 verify_jwt = true

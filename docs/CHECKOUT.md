@@ -325,7 +325,6 @@ Estas variáveis entram no bundle público e **não são secretas**:
 VITE_APP_URL=
 VITE_SUPABASE_URL=
 VITE_SUPABASE_PUBLISHABLE_KEY=
-VITE_MERCADOPAGO_PUBLIC_KEY=
 ```
 
 ### Secrets das Supabase Edge Functions
@@ -335,6 +334,7 @@ Nunca usar prefixo `VITE_` nestas variáveis:
 ```env
 APP_URL=
 MERCADOPAGO_ACCESS_TOKEN=
+MERCADOPAGO_PUBLIC_KEY=
 MERCADOPAGO_WEBHOOK_SECRET=
 MELHOR_ENVIO_ENV=sandbox
 MELHOR_ENVIO_CLIENT_ID=
@@ -455,7 +455,10 @@ O roteiro manual está em [`FASE-3-TESTE-LOCAL.md`](./FASE-3-TESTE-LOCAL.md).
 - [x] Após pagamento, criar, comprar, gerar e imprimir uma etiqueta por remessa.
 - [x] Falta de saldo ou falha externa cria `label_error` e permite nova tentativa.
 - [x] OAuth com `state`, Vault e renovação automática dos tokens.
-- [ ] Aplicar no projeto remoto, autorizar a conta e homologar o ciclo na API sandbox real.
+- [x] Aplicar no projeto remoto e autorizar a conta.
+- [ ] Homologar a compra completa da etiqueta na API sandbox real.
+
+> **Status em 21/08/2026:** migration e Edge Functions aplicadas no projeto remoto; OAuth autorizado e tokens guardados no Vault. A cotação real foi exercitada. A compra completa de uma etiqueta no sandbox continua como homologação operacional pendente.
 
 Validação local reproduzível, sem chamada externa:
 
@@ -472,14 +475,24 @@ O roteiro completo está em [`FASE-4-TESTE-LOCAL.md`](./FASE-4-TESTE-LOCAL.md).
 
 > Antes de iniciar: deixe a aplicação, as credenciais e os usuários de teste do Mercado Pago prontos conforme a [Fase 5 do guia de contas e serviços externos](./CONTAS-E-SERVICOS-EXTERNOS.md#contas-fase-5).
 
-- Criar rota `/checkout` com endereço, fretes, revisão, pagamento e confirmação.
-- Usar Card Payment Brick somente para tokenizar cartão.
-- Criar Pix pela Orders API e mostrar QR Code/Copia e Cola.
-- Backend recalcula produtos, estoque, fretes e total.
-- Criar order do Mercado Pago com chave de idempotência.
-- Webhook valida assinatura e consulta o estado real antes de atualizar o pedido.
-- Pix e reserva expiram em 30 minutos.
-- Pagamento aprovado após expiração tenta reservar novamente; sem estoque, estorna e alerta o super admin.
+- [x] Criar rota `/checkout` com endereço, fretes, revisão, pagamento e confirmação.
+- [x] Usar Card Payment Brick somente para tokenizar cartão.
+- [x] Criar Pix pela Orders API e mostrar QR Code/Copia e Cola.
+- [x] Backend recalcula produtos, estoque, fretes e total.
+- [x] Criar order do Mercado Pago com chave de idempotência.
+- [x] Webhook valida assinatura e consulta o estado real antes de atualizar o pedido.
+- [x] Pix e reserva expiram em 30 minutos.
+- [x] Pagamento aprovado após expiração tenta reservar novamente; sem estoque, estorna e registra alerta operacional.
+- [ ] Aplicar no projeto remoto e homologar Pix/cartão/webhook com as credenciais de teste reais.
+
+> **Status em 21/08/2026:** implementação e validação local concluídas com mocks, incluindo aprovação, recusa, pendência, idempotência e estorno automático. Consulte [`FASE-5-TESTE-LOCAL.md`](./FASE-5-TESTE-LOCAL.md).
+
+Validação local reproduzível, sem chamada externa:
+
+```bash
+npm run local:setup
+npm run validate:phase5
+```
 
 <a id="checkout-fase-6"></a>
 
