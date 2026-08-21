@@ -10,6 +10,9 @@ const OWN_PRODUCER_ID = "10000000-0000-4000-8000-000000000001";
 const OTHER_PRODUCER_ID = "10000000-0000-4000-8000-000000000002";
 const OWN_PRODUCT_ID = "20000000-0000-4000-8000-000000000001";
 const OTHER_PRODUCT_ID = "20000000-0000-4000-8000-000000000002";
+const CUSTOMER_ADDRESS_ID = "30000000-0000-4000-8000-000000000001";
+const CUSTOMER_ORDER_ID = "40000000-0000-4000-8000-000000000001";
+const CUSTOMER_ORDER_ITEM_ID = "50000000-0000-4000-8000-000000000001";
 
 function localStatus() {
   const output = execFileSync(
@@ -67,7 +70,7 @@ async function main() {
   });
   const adminUser = await ensureUser(admin, ADMIN_EMAIL, TEST_PASSWORD);
   const producerUser = await ensureUser(admin, PRODUCER_EMAIL, TEST_PASSWORD);
-  await ensureUser(admin, CUSTOMER_EMAIL, TEST_PASSWORD);
+  const customerUser = await ensureUser(admin, CUSTOMER_EMAIL, TEST_PASSWORD);
 
   const { error: roleError } = await admin.from("user_roles").upsert([
     { user_id: adminUser.id, role: "super_admin" },
@@ -160,6 +163,84 @@ async function main() {
     },
   ]);
   if (fulfillmentError) throw fulfillmentError;
+
+  const { error: customerProfileError } = await admin.from("customer_profiles").update({
+    full_name: "Cliente de Teste",
+    email: CUSTOMER_EMAIL,
+    phone: "67977777777",
+  }).eq("id", customerUser.id);
+  if (customerProfileError) throw customerProfileError;
+
+  const { error: clearDefaultAddressError } = await admin
+    .from("customer_addresses")
+    .update({ is_default: false })
+    .eq("customer_id", customerUser.id);
+  if (clearDefaultAddressError) throw clearDefaultAddressError;
+
+  const { error: customerAddressError } = await admin.from("customer_addresses").upsert({
+    id: CUSTOMER_ADDRESS_ID,
+    customer_id: customerUser.id,
+    label: "Casa",
+    recipient_name: "Cliente de Teste",
+    recipient_phone: "67977777777",
+    postal_code: "79240000",
+    street: "Rua do Cliente",
+    number: "10",
+    neighborhood: "Centro",
+    city: "Jardim",
+    state: "MS",
+    is_default: true,
+  });
+  if (customerAddressError) throw customerAddressError;
+
+  const shippingAddressSnapshot = {
+    recipient_name: "Cliente de Teste",
+    recipient_phone: "67977777777",
+    postal_code: "79240000",
+    street: "Rua do Cliente",
+    number: "10",
+    neighborhood: "Centro",
+    city: "Jardim",
+    state: "MS",
+  };
+  const { error: customerOrderError } = await admin.from("orders").upsert({
+    id: CUSTOMER_ORDER_ID,
+    customer_id: customerUser.id,
+    status: "paid",
+    subtotal_amount_cents: 2500,
+    shipping_amount_cents: 1000,
+    discount_amount_cents: 0,
+    total_amount_cents: 3500,
+    customer_snapshot: {
+      id: customerUser.id,
+      name: "Cliente de Teste",
+      email: CUSTOMER_EMAIL,
+      phone: "67977777777",
+    },
+    shipping_address_snapshot: shippingAddressSnapshot,
+    idempotency_key: "local-customer-demo-order",
+  });
+  if (customerOrderError) throw customerOrderError;
+
+  const { error: customerOrderItemError } = await admin.from("order_items").upsert({
+    id: CUSTOMER_ORDER_ITEM_ID,
+    order_id: CUSTOMER_ORDER_ID,
+    product_id: OWN_PRODUCT_ID,
+    producer_id: OWN_PRODUCER_ID,
+    product_name: "Produto do usuário de teste",
+    product_snapshot: {
+      name: "Produto do usuário de teste",
+      category: "Teste local",
+      image: ["/placeholder.svg"],
+      weight_grams: 500,
+      height_cm: 10,
+      width_cm: 15,
+      length_cm: 20,
+    },
+    unit_price_cents: 2500,
+    quantity: 1,
+  });
+  if (customerOrderItemError) throw customerOrderItemError;
 
   console.log("Ambiente local preparado.");
   console.log(`Admin: ${ADMIN_EMAIL} / ${TEST_PASSWORD}`);

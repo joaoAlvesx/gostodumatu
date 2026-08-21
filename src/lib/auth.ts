@@ -14,3 +14,13 @@ export async function currentUserIsSuperAdmin(): Promise<boolean> {
   if (error) throw error;
   return data;
 }
+
+export function safeRedirectPath(value: string | null, fallback = "/minha-conta"): string {
+  return value?.startsWith("/") && !value.startsWith("//") ? value : fallback;
+}
+
+export function authCallbackUrl(next: string): string {
+  const url = new URL("/auth/callback", window.location.origin);
+  url.searchParams.set("next", safeRedirectPath(next));
+  return url.toString();
+}

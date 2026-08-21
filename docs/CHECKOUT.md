@@ -422,11 +422,24 @@ O teste cobre RLS, isolamento dos endereços privados de origem, valores em cent
 
 > Antes de iniciar: deixe Resend, domínio de e-mail e Google Cloud OAuth prontos conforme a [Fase 3 do guia de contas e serviços externos](./CONTAS-E-SERVICOS-EXTERNOS.md#contas-fase-3).
 
-- Login Google e e-mail/senha.
-- Confirmação e recuperação de e-mail via Resend/SMTP.
-- Página `/minha-conta/pedidos`.
-- Página `/minha-conta/pedidos/:id`.
-- RLS garantindo que cada cliente veja somente os próprios pedidos.
+> **Status em 21/08/2026:** implementação e validação concluídas no ambiente local. A homologação do Google e do SMTP/Resend permanece pendente no projeto remoto.
+
+- [x] Login Google e e-mail/senha.
+- [x] Confirmação e recuperação de e-mail via Supabase Auth e SMTP.
+- [x] Cadastro de dados pessoais e endereços do cliente.
+- [x] Página `/minha-conta/pedidos`.
+- [x] Página `/minha-conta/pedidos/:id`.
+- [x] RLS garantindo que cada cliente veja somente os próprios pedidos.
+- [ ] Homologar Google, confirmação e recuperação de senha no domínio publicado.
+
+Validação local reproduzível:
+
+```bash
+npm run local:setup
+npm run validate:phase3
+```
+
+O roteiro manual está em [`FASE-3-TESTE-LOCAL.md`](./FASE-3-TESTE-LOCAL.md).
 
 <a id="checkout-fase-4"></a>
 

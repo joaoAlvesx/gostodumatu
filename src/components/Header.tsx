@@ -8,9 +8,10 @@ import {
   SheetClose,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Menu, ShoppingCart, Heart } from "lucide-react";
+import { Menu, ShoppingCart, Heart, LogIn, UserRound } from "lucide-react";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
+import { useAuth } from "@/context/AuthContext";
 import logoHeader from "@/assets/logo.svg";
 
 const navLinks = [
@@ -22,6 +23,7 @@ const navLinks = [
 const Header = () => {
   const cart = useCart();
   const { wishlist, openWishlist } = useWishlist();
+  const { user } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(
     typeof window !== "undefined" ? window.innerWidth >= 768 : true
@@ -35,10 +37,7 @@ const Header = () => {
     return () => mql.removeEventListener("change", handleChange);
   }, []);
 
-  const totalCount =
-    cart?.totalItems ??
-    cart?.items?.reduce((acc, item) => acc + (item.quantity || 1), 0) ??
-    0;
+  const totalCount = cart.count;
 
   const wishlistCount = wishlist.length;
 
@@ -89,6 +88,16 @@ const Header = () => {
                       </a>
                     </SheetClose>
                   ))}
+                  <SheetClose asChild>
+                    <Link
+                      to={user ? "/minha-conta" : "/entrar"}
+                      onClick={handleNavClick}
+                      className="flex items-center gap-2 px-4 py-3 rounded-md text-base font-medium text-foreground/80 hover:bg-muted hover:text-primary transition-colors"
+                    >
+                      {user ? <UserRound className="h-5 w-5" /> : <LogIn className="h-5 w-5" />}
+                      {user ? "Minha conta" : "Entrar"}
+                    </Link>
+                  </SheetClose>
                 </nav>
                 <div className="mt-auto px-5 py-4 border-t border-border/50 text-xs text-muted-foreground">
                   © {new Date().getFullYear()} Gostudumatu
@@ -183,6 +192,11 @@ const Header = () => {
 
             {/* Ações - direita */}
             <div className="flex items-center space-x-3 ml-auto shrink-0">
+              <Button asChild variant="outline" size="icon" aria-label={user ? "Abrir minha conta" : "Entrar"}>
+                <Link to={user ? "/minha-conta" : "/entrar"}>
+                  {user ? <UserRound className="h-5 w-5" /> : <LogIn className="h-5 w-5" />}
+                </Link>
+              </Button>
               <Button
                 variant="outline"
                 size="icon"

@@ -39,7 +39,7 @@ const CartDrawer = () => {
             items.map((item) => (
               <div key={item.product.id} className="flex gap-3 pb-4 border-b border-border">
                 <img
-                  src={item.product.image}
+                  src={item.product.image[0] ?? "/placeholder.svg"}
                   alt={item.product.name}
                   className="w-20 h-20 object-cover rounded-md"
                 />

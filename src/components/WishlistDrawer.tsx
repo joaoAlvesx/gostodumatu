@@ -20,6 +20,12 @@ const WishlistDrawer = () => {
       image: Array.isArray(product.image) ? product.image : product.image ? [product.image] : [],
       category: product.category ?? "",
       description: product.description ?? "",
+      stockQuantity: product.stockQuantity ?? 0,
+      weightGrams: product.weightGrams,
+      heightCm: product.heightCm,
+      widthCm: product.widthCm,
+      lengthCm: product.lengthCm,
+      checkoutStatus: product.checkoutStatus ?? "draft",
     };
     addItem(catalogProduct);
     toast({ title: "Adicionado ao carrinho!", description: product.name });

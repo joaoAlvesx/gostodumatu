@@ -11,6 +11,12 @@ export interface Product {
   originalPrice?: number;
   isNew?: boolean;
   producerId?: string;
+  stockQuantity?: number;
+  weightGrams?: number;
+  heightCm?: number;
+  widthCm?: number;
+  lengthCm?: number;
+  checkoutStatus?: "draft" | "available" | "paused";
 }
 
 interface WishlistContextType {

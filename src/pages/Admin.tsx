@@ -370,7 +370,7 @@ const Admin = () => {
   // --- LÓGICA DE SUPER ADMIN: CRIAR NOVO PRODUTOR COM CONTA ---
   const handleCreateProducerAccount = async (e: React.FormEvent) => {
     e.preventDefault();
-    const form = e.currentTarget;
+    const form = e.currentTarget as HTMLFormElement;
     if (!producerForm.name || !producerForm.email || !producerForm.password) {
       toast({ title: "Nome, E-mail e Senha são obrigatórios", variant: "destructive" });
       return;
