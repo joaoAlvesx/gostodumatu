@@ -79,12 +79,15 @@ Selecione o tópico **Order (Mercado Pago)**. Depois de salvar, copie a assinatu
 Em **Supabase > Edge Functions > Secrets**, use exatamente estes nomes:
 
 ```env
-MERCADOPAGO_ACCESS_TOKEN=TEST-...
-MERCADOPAGO_PUBLIC_KEY=TEST-...
+MERCADOPAGO_ACCESS_TOKEN=APP_USR-...
+MERCADOPAGO_PUBLIC_KEY=<public-key-de-teste>
 MERCADOPAGO_WEBHOOK_SECRET=...
+MERCADOPAGO_ENV=test
 ```
 
 Para homologação, todos os valores devem pertencer à mesma aplicação e ao mesmo ambiente de teste. Não use nomes com espaços, não use prefixo `VITE_` no Access Token ou no Webhook Secret e não habilite `MERCADOPAGO_MOCK` no projeto remoto.
+
+No ambiente `test`, o backend usa automaticamente a fixture oficial do Pix da Orders API (`R$ 50,00`, e-mail de teste e nome `APRO`). O total comercial do pedido continua preservado no banco. Antes de aceitar pagamentos reais, troque obrigatoriamente `MERCADOPAGO_ENV` para `production`; nesse modo, o valor enviado e conciliado volta a ser exatamente o total do pedido.
 
 `MERCADOPAGO_PUBLIC_KEY` não concede acesso administrativo, mas a implementação a entrega ao navegador somente pela sessão de checkout. `MERCADOPAGO_ACCESS_TOKEN` e `MERCADOPAGO_WEBHOOK_SECRET` nunca podem chegar ao frontend.
 

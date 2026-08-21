@@ -78,6 +78,7 @@ async function ensureFunctionsRunning(apiUrl) {
     "MERCADOPAGO_ACCESS_TOKEN=TEST-local-access-token",
     "MERCADOPAGO_PUBLIC_KEY=TEST-local-public-key",
     `MERCADOPAGO_WEBHOOK_SECRET=${WEBHOOK_SECRET}`,
+    "MERCADOPAGO_ENV=test",
     "MERCADOPAGO_MOCK=true",
     "",
   ].join("\n"), { mode: 0o600 });
@@ -211,6 +212,15 @@ async function main() {
     assert(
       pix.status === 200 && pix.payload.orderStatus === "awaiting_payment" && pix.payload.payment?.qrCode,
       "Pix cria QR Code e permanece aguardando confirmação",
+    );
+    const { data: pixAttempt } = await service
+      .from("payment_attempts")
+      .select("provider_response")
+      .eq("id", pix.payload.paymentAttemptId)
+      .single();
+    assert(
+      pixAttempt?.provider_response?.total_amount === "50.00",
+      "Pix de teste usa a fixture oficial de R$ 50 do Mercado Pago",
     );
     const repeatedPix = await invoke(status.API_URL, publicKey, customer.token, "process-payment", {
       action: "create",

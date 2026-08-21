@@ -200,12 +200,18 @@ Deno.serve(async (request) => {
 
     const amount = (Number(order.total_amount_cents) / 100).toFixed(2);
     const customer = object(order.customer_snapshot);
-    const payer = { email: text(customer.email) };
+    const mercadoPago = mercadoPagoConfig();
+    const testPixFixture = method === "pix" && mercadoPago.environment === "test";
+    const providerAmount = testPixFixture ? "50.00" : amount;
+    const payer = testPixFixture
+      ? { email: "test_user_br@testuser.com", first_name: "APRO" }
+      : { email: text(customer.email) };
     let paymentMethod: Record<string, unknown>;
     let expiration: Record<string, unknown> = {};
     if (method === "pix") {
       paymentMethod = { id: "pix", type: "bank_transfer" };
-      expiration = { expiration_time: "PT30M" };
+      // A fixture de homologacao deve seguir exatamente o formato documentado.
+      expiration = testPixFixture ? {} : { expiration_time: "PT30M" };
     } else {
       const card = object(body.card);
       const token = text(card.token);
@@ -231,16 +237,17 @@ Deno.serve(async (request) => {
         body: {
           type: "online",
           processing_mode: "automatic",
-          total_amount: amount,
+          total_amount: providerAmount,
           external_reference: orderId,
           payer,
-          transactions: { payments: [{ amount, payment_method: paymentMethod, ...expiration }] },
+          transactions: { payments: [{ amount: providerAmount, payment_method: paymentMethod, ...expiration }] },
         },
       });
     } catch (error) {
+      const providerError = mercadoPagoPublicError(error);
       await admin.from("payment_attempts").update({
         status: "error",
-        status_detail: error instanceof Error ? error.message.slice(0, 200) : "MERCADOPAGO_ERROR",
+        status_detail: providerError.code.slice(0, 200),
       }).eq("id", attempt.id);
       throw error;
     }

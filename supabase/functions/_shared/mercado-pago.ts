@@ -37,6 +37,14 @@ function requiredEnvironment(name: string): string {
 
 export function mercadoPagoConfig() {
   const mock = Deno.env.get("MERCADOPAGO_MOCK") === "true";
+  const environment = Deno.env.get("MERCADOPAGO_ENV")?.trim().toLowerCase() || (mock ? "test" : "production");
+  if (environment !== "test" && environment !== "production") {
+    throw new MercadoPagoError(
+      "MERCADOPAGO_NOT_CONFIGURED",
+      "Variável MERCADOPAGO_ENV deve ser test ou production.",
+      503,
+    );
+  }
   return {
     apiUrl: (Deno.env.get("MERCADOPAGO_API_URL")?.trim() || "https://api.mercadopago.com").replace(/\/$/, ""),
     accessToken: mock ? Deno.env.get("MERCADOPAGO_ACCESS_TOKEN")?.trim() || "TEST-mock-access-token" : requiredEnvironment("MERCADOPAGO_ACCESS_TOKEN"),
@@ -44,6 +52,7 @@ export function mercadoPagoConfig() {
     webhookSecret: mock
       ? Deno.env.get("MERCADOPAGO_WEBHOOK_SECRET")?.trim() || "test-webhook-secret"
       : requiredEnvironment("MERCADOPAGO_WEBHOOK_SECRET"),
+    environment,
     mock,
   };
 }
@@ -172,6 +181,12 @@ export async function mercadoPagoRequest<T extends Record<string, unknown>>(
   if (!response.ok) {
     const provider = object(payload);
     const providerCode = text(provider.code) || text(provider.error) || `HTTP_${response.status}`;
+    console.error(JSON.stringify({
+      event: "mercadopago_request_failed",
+      path,
+      providerCode,
+      providerStatus: response.status,
+    }));
     throw new MercadoPagoError(
       providerCode,
       response.status >= 500
@@ -248,13 +263,22 @@ export async function reconcileMercadoPagoOrder(
   const view = mercadoPagoOrderView(providerOrder);
   const sanitized = sanitizeMercadoPagoOrder(providerOrder);
   const externalReference = text(providerOrder.external_reference);
+  const providerAmountCents = mercadoPagoAmountCents(providerOrder);
+  // O sandbox da Orders API aceita Pix somente com a fixture oficial de R$ 50.
+  // Essa excecao depende de uma configuracao explicita e nunca e aplicada em producao.
+  const validTestPixFixture = mercadoPagoConfig().environment === "test"
+    && view.paymentMethod === "pix"
+    && providerAmountCents === 5_000;
   const { data: localOrder, error: orderError } = await admin
     .from("orders")
     .select("id, total_amount_cents")
     .eq("id", orderId)
     .maybeSingle();
   if (orderError || !localOrder) throw new MercadoPagoError("ORDER_NOT_FOUND", "Pedido não encontrado.", 404);
-  if (externalReference !== orderId || mercadoPagoAmountCents(providerOrder) !== Number(localOrder.total_amount_cents)) {
+  if (
+    externalReference !== orderId
+    || (!validTestPixFixture && providerAmountCents !== Number(localOrder.total_amount_cents))
+  ) {
     throw new MercadoPagoError("PAYMENT_MISMATCH", "O pagamento retornado não corresponde ao pedido.", 409);
   }
 
