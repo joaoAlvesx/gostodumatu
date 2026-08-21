@@ -386,23 +386,35 @@ As contas, dados externos e responsabilidades que precisam estar prontos em cada
 
 > Antes de iniciar: conclua a criação antecipada das contas e reúna os dados indicados na [Fase 2 do guia de contas e serviços externos](./CONTAS-E-SERVICOS-EXTERNOS.md#contas-fase-2).
 
+> **Status em 21/08/2026:** implementação e validação concluídas somente no Supabase local. A migration `20260821000100_phase_2_commerce_and_inventory.sql` ainda não foi aplicada em produção.
+
 Ampliar `products` com:
 
-- `stock_quantity`;
-- peso, altura, largura e comprimento;
-- estado de disponibilidade para checkout.
+- [x] `stock_quantity`;
+- [x] peso, altura, largura e comprimento;
+- [x] estado de disponibilidade para checkout.
 
 Criar:
 
-- `customer_profiles` e `customer_addresses`;
-- `producer_fulfillment_profiles`, separado de `producers` para não expor documentos e endereço de origem;
-- `orders` e `order_items` com valores em centavos e snapshots;
-- `shipments`, uma por produtor;
-- `inventory_reservations`;
-- `payment_attempts` e `refunds`;
-- `order_events`, `webhook_events` e `fulfillment_jobs`.
+- [x] `customer_profiles` e `customer_addresses`;
+- [x] `producer_fulfillment_profiles`, separado de `producers` para não expor documentos e endereço de origem;
+- [x] `orders` e `order_items` com valores em centavos e snapshots;
+- [x] `shipments`, uma por produtor;
+- [x] `inventory_reservations`;
+- [x] `payment_attempts` e `refunds`;
+- [x] `order_events`, `webhook_events` e `fulfillment_jobs`.
 
-Reservar estoque em função SQL transacional com bloqueio de linhas. Nunca calcular disponibilidade apenas no React.
+- [x] Reservar estoque em função SQL transacional com bloqueio de linhas. Nunca calcular disponibilidade apenas no React.
+
+Validação local reproduzível:
+
+```bash
+npm run local:reset
+npm run local:setup
+npm run validate:phase2
+```
+
+O teste cobre RLS, isolamento dos endereços privados de origem, valores em centavos, snapshots, uma remessa por produtor, idempotência, rollback por falta de estoque e liberação após expiração. Ele recusa execução quando a API do Supabase não aponta para `127.0.0.1`.
 
 <a id="checkout-fase-3"></a>
 

@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const ADMIN_EMAIL = "admin@local.test";
 const PRODUCER_EMAIL = "produtor@local.test";
+const CUSTOMER_EMAIL = "cliente@local.test";
 const TEST_PASSWORD = "TesteLocal123!";
 const OWN_PRODUCER_ID = "10000000-0000-4000-8000-000000000001";
 const OTHER_PRODUCER_ID = "10000000-0000-4000-8000-000000000002";
@@ -66,6 +67,7 @@ async function main() {
   });
   const adminUser = await ensureUser(admin, ADMIN_EMAIL, TEST_PASSWORD);
   const producerUser = await ensureUser(admin, PRODUCER_EMAIL, TEST_PASSWORD);
+  await ensureUser(admin, CUSTOMER_EMAIL, TEST_PASSWORD);
 
   const { error: roleError } = await admin.from("user_roles").upsert([
     { user_id: adminUser.id, role: "super_admin" },
@@ -104,6 +106,12 @@ async function main() {
       category: "Teste local",
       description: "Pode ser alterado pelo produtor@local.test.",
       producer_id: OWN_PRODUCER_ID,
+      stock_quantity: 5,
+      weight_grams: 500,
+      height_cm: 10,
+      width_cm: 15,
+      length_cm: 20,
+      checkout_status: "available",
     },
     {
       id: OTHER_PRODUCT_ID,
@@ -113,13 +121,50 @@ async function main() {
       category: "Teste local",
       description: "Deve permanecer protegido contra o outro produtor.",
       producer_id: OTHER_PRODUCER_ID,
+      stock_quantity: 8,
+      weight_grams: 750,
+      height_cm: 12,
+      width_cm: 18,
+      length_cm: 24,
+      checkout_status: "available",
     },
   ]);
   if (productError) throw productError;
 
+  const { error: fulfillmentError } = await admin.from("producer_fulfillment_profiles").upsert([
+    {
+      producer_id: OWN_PRODUCER_ID,
+      contact_name: "Produtor de Teste",
+      contact_email: PRODUCER_EMAIL,
+      contact_phone: "67999999999",
+      tax_id: "12345678909",
+      origin_postal_code: "79240000",
+      origin_street: "Rua de Teste",
+      origin_number: "100",
+      origin_neighborhood: "Centro",
+      origin_city: "Jardim",
+      origin_state: "MS",
+      special_instructions: "Dados fictícios exclusivos do ambiente local.",
+    },
+    {
+      producer_id: OTHER_PRODUCER_ID,
+      contact_name: "Outro Produtor",
+      contact_phone: "67988888888",
+      origin_postal_code: "79240000",
+      origin_street: "Avenida Local",
+      origin_number: "200",
+      origin_neighborhood: "Centro",
+      origin_city: "Jardim",
+      origin_state: "MS",
+      special_instructions: "Dados fictícios exclusivos do ambiente local.",
+    },
+  ]);
+  if (fulfillmentError) throw fulfillmentError;
+
   console.log("Ambiente local preparado.");
   console.log(`Admin: ${ADMIN_EMAIL} / ${TEST_PASSWORD}`);
   console.log(`Produtor: ${PRODUCER_EMAIL} / ${TEST_PASSWORD}`);
+  console.log(`Cliente: ${CUSTOMER_EMAIL} / ${TEST_PASSWORD}`);
   console.log(`Studio: ${status.STUDIO_URL}`);
 }
 

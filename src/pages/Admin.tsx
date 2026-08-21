@@ -8,9 +8,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Plus, Trash2, Pencil, X, LogOut, Store, Package, UserCheck, KeyRound } from "lucide-react";
-import { loadProducts, saveProducts, formatPrice, deleteProductFromDatabase, supabase, type Product } from "@/lib/products";
+import { ArrowLeft, Plus, Trash2, Pencil, X, LogOut, Store, Package, UserCheck, KeyRound, Truck } from "lucide-react";
+import { loadProducts, saveProducts, formatPrice, deleteProductFromDatabase, supabase, type Product, type ProductCheckoutStatus } from "@/lib/products";
 import { loadProducers, createProducerWithAccount, loadProducerByUserId, saveProducer, deleteProducer, type Producer } from "@/lib/producers";
+import {
+  emptyFulfillmentProfile,
+  loadFulfillmentProfile,
+  saveFulfillmentProfile,
+  type FulfillmentProfile,
+} from "@/lib/fulfillment";
 import { useToast } from "@/hooks/use-toast";
 import { currentUserIsSuperAdmin } from "@/lib/auth";
 import {
@@ -33,6 +39,12 @@ const emptyProductForm = {
   description: "",
   isNew: false,
   producerId: "",
+  stockQuantity: "0",
+  weightGrams: "",
+  heightCm: "",
+  widthCm: "",
+  lengthCm: "",
+  checkoutStatus: "draft" as ProductCheckoutStatus,
 };
 
 const emptyProducerCreateForm = {
@@ -76,6 +88,8 @@ const Admin = () => {
   const [originalProductImages, setOriginalProductImages] = useState<string[]>([]);
   const [producerCreateImage, setProducerCreateImage] = useState<File | null>(null);
   const [myStoreImage, setMyStoreImage] = useState<File | null>(null);
+  const [selectedFulfillmentProducerId, setSelectedFulfillmentProducerId] = useState("");
+  const [fulfillmentForm, setFulfillmentForm] = useState<FulfillmentProfile | null>(null);
   
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
 
@@ -98,6 +112,35 @@ const Admin = () => {
       }
     }
   }, []);
+
+  useEffect(() => {
+    const producerId = isSuperAdmin
+      ? selectedFulfillmentProducerId || producers[0]?.id
+      : currentProducer?.id;
+
+    if (!producerId) {
+      setFulfillmentForm(null);
+      return;
+    }
+
+    if (isSuperAdmin && !selectedFulfillmentProducerId) {
+      setSelectedFulfillmentProducerId(producerId);
+    }
+
+    let cancelled = false;
+    loadFulfillmentProfile(producerId)
+      .then((profile) => {
+        if (!cancelled) setFulfillmentForm(profile ?? emptyFulfillmentProfile(producerId));
+      })
+      .catch((error) => {
+        console.error("Não foi possível carregar os dados de expedição:", error);
+        if (!cancelled) setFulfillmentForm(emptyFulfillmentProfile(producerId));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentProducer?.id, isSuperAdmin, producers, selectedFulfillmentProducerId]);
 
   // Verifica a sessão atual no Supabase Auth
   const checkSession = useCallback(async () => {
@@ -160,6 +203,8 @@ const Admin = () => {
     setCurrentProducer(null);
     setProducts([]);
     setProducers([]);
+    setSelectedFulfillmentProducerId("");
+    setFulfillmentForm(null);
     setEmail("");
     setPassword("");
     toast({ title: "Sessão encerrada" });
@@ -201,6 +246,42 @@ const Admin = () => {
 
     // Se for produtor comum, força a associação com o ID da loja dele
     const targetProducerId = isSuperAdmin ? (productForm.producerId || undefined) : currentProducer?.id;
+    const stockQuantity = Number(productForm.stockQuantity);
+    const weightGrams = productForm.weightGrams ? Number(productForm.weightGrams) : undefined;
+    const heightCm = productForm.heightCm ? Number(productForm.heightCm) : undefined;
+    const widthCm = productForm.widthCm ? Number(productForm.widthCm) : undefined;
+    const lengthCm = productForm.lengthCm ? Number(productForm.lengthCm) : undefined;
+
+    if (productForm.stockQuantity.trim() === "" || !Number.isInteger(stockQuantity) || stockQuantity < 0) {
+      toast({ title: "Informe um estoque inteiro maior ou igual a zero", variant: "destructive" });
+      return;
+    }
+
+    if (
+      (weightGrams !== undefined && (!Number.isInteger(weightGrams) || weightGrams <= 0))
+      || [heightCm, widthCm, lengthCm].some(
+        (value) => value !== undefined && (!Number.isFinite(value) || value <= 0),
+      )
+    ) {
+      toast({
+        title: "Peso ou dimensões inválidos",
+        description: "Use peso inteiro em gramas e dimensões positivas em centímetros.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (
+      productForm.checkoutStatus === "available"
+      && (!targetProducerId || !weightGrams || !heightCm || !widthCm || !lengthCm)
+    ) {
+      toast({
+        title: "Produto incompleto para checkout",
+        description: "Vincule um produtor e informe peso e todas as dimensões da embalagem.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     const productId = editingProductId ?? crypto.randomUUID();
     let uploadedImages: string[] = [];
@@ -222,6 +303,12 @@ const Admin = () => {
         description: productForm.description,
         isNew: productForm.isNew,
         producerId: targetProducerId,
+        stockQuantity,
+        weightGrams,
+        heightCm,
+        widthCm,
+        lengthCm,
+        checkoutStatus: productForm.checkoutStatus,
       };
 
       const success = await saveProducts(product);
@@ -259,6 +346,12 @@ const Admin = () => {
       description: p.description || "",
       isNew: !!p.isNew,
       producerId: p.producerId || "",
+      stockQuantity: String(p.stockQuantity),
+      weightGrams: p.weightGrams ? String(p.weightGrams) : "",
+      heightCm: p.heightCm ? String(p.heightCm) : "",
+      widthCm: p.widthCm ? String(p.widthCm) : "",
+      lengthCm: p.lengthCm ? String(p.lengthCm) : "",
+      checkoutStatus: p.checkoutStatus,
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -360,6 +453,46 @@ const Admin = () => {
     }
   };
 
+  const handleFulfillmentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fulfillmentForm) return;
+
+    const postalCode = fulfillmentForm.originPostalCode.replace(/\D/g, "");
+    const state = fulfillmentForm.originState.trim().toUpperCase();
+    if (
+      !fulfillmentForm.contactName.trim()
+      || !fulfillmentForm.contactPhone.replace(/\D/g, "")
+      || postalCode.length !== 8
+      || !fulfillmentForm.originStreet.trim()
+      || !fulfillmentForm.originNumber.trim()
+      || !fulfillmentForm.originNeighborhood.trim()
+      || !fulfillmentForm.originCity.trim()
+      || state.length !== 2
+    ) {
+      toast({
+        title: "Preencha os dados obrigatórios de expedição",
+        description: "O CEP deve ter 8 números e o estado deve usar uma sigla com 2 letras.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      await saveFulfillmentProfile({
+        ...fulfillmentForm,
+        originPostalCode: postalCode,
+        originState: state,
+      });
+      toast({ title: "Dados privados de expedição salvos" });
+    } catch (error) {
+      toast({
+        title: "Erro ao salvar os dados de expedição",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    }
+  };
+
   // TELA DE LOGIN (Se não estiver autenticado)
   if (!currentUser) {
     return (
@@ -428,13 +561,16 @@ const Admin = () => {
 
       <main className="container mx-auto px-4 py-8">
         <Tabs defaultValue="products" className="space-y-8">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsList className="grid w-full max-w-2xl grid-cols-3">
             <TabsTrigger value="products" className="flex items-center gap-2">
               <Package className="h-4 w-4" /> Seus Produtos
             </TabsTrigger>
             <TabsTrigger value="settings" className="flex items-center gap-2">
               {isSuperAdmin ? <UserCheck className="h-4 w-4" /> : <Store className="h-4 w-4" />}
               {isSuperAdmin ? "Gerenciar Produtores" : "Dados da Sua Loja"}
+            </TabsTrigger>
+            <TabsTrigger value="fulfillment" className="flex items-center gap-2">
+              <Truck className="h-4 w-4" /> Expedição
             </TabsTrigger>
           </TabsList>
 
@@ -484,6 +620,79 @@ const Admin = () => {
                       <Label>Preço original</Label>
                       <Input type="number" step="0.01" value={productForm.originalPrice} onChange={(e) => setProductForm({ ...productForm, originalPrice: e.target.value })} />
                     </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Estoque disponível *</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={productForm.stockQuantity}
+                        onChange={(e) => setProductForm({ ...productForm, stockQuantity: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label>Disponibilidade no checkout *</Label>
+                      <select
+                        value={productForm.checkoutStatus}
+                        onChange={(e) => setProductForm({
+                          ...productForm,
+                          checkoutStatus: e.target.value as ProductCheckoutStatus,
+                        })}
+                        className="w-full h-10 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                      >
+                        <option value="draft">Rascunho</option>
+                        <option value="available">Disponível</option>
+                        <option value="paused">Pausado</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Embalagem usada no frete</Label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <Input
+                        type="number"
+                        min="1"
+                        step="1"
+                        placeholder="Peso (g)"
+                        aria-label="Peso em gramas"
+                        value={productForm.weightGrams}
+                        onChange={(e) => setProductForm({ ...productForm, weightGrams: e.target.value })}
+                      />
+                      <Input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        placeholder="Altura (cm)"
+                        aria-label="Altura em centímetros"
+                        value={productForm.heightCm}
+                        onChange={(e) => setProductForm({ ...productForm, heightCm: e.target.value })}
+                      />
+                      <Input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        placeholder="Largura (cm)"
+                        aria-label="Largura em centímetros"
+                        value={productForm.widthCm}
+                        onChange={(e) => setProductForm({ ...productForm, widthCm: e.target.value })}
+                      />
+                      <Input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        placeholder="Comprimento (cm)"
+                        aria-label="Comprimento em centímetros"
+                        value={productForm.lengthCm}
+                        onChange={(e) => setProductForm({ ...productForm, lengthCm: e.target.value })}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Peso e dimensões são obrigatórios antes de marcar o produto como disponível.
+                    </p>
                   </div>
 
                   <div>
@@ -564,9 +773,13 @@ const Admin = () => {
                         <div className="flex items-center gap-2">
                           <h4 className="font-medium truncate">{p.name}</h4>
                           {p.isNew && <Badge className="bg-primary text-primary-foreground text-xs">Novo</Badge>}
+                          <Badge variant={p.checkoutStatus === "available" ? "default" : "secondary"}>
+                            {p.checkoutStatus === "available" ? "Disponível" : p.checkoutStatus === "paused" ? "Pausado" : "Rascunho"}
+                          </Badge>
                         </div>
                         <p className="text-xs text-muted-foreground">{p.category}</p>
                         <p className="text-primary font-semibold text-sm">{formatPrice(p.price)}</p>
+                        <p className="text-xs text-muted-foreground">Estoque: {p.stockQuantity}</p>
                       </div>
                       <div className="flex flex-col gap-1">
                         <Button size="icon" variant="ghost" onClick={() => handleProductEdit(p)}>
@@ -799,6 +1012,155 @@ const Admin = () => {
                 </Card>
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="fulfillment">
+            <Card className="max-w-4xl">
+              <CardHeader>
+                <CardTitle className="font-artisan">Dados privados de expedição</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Estas informações são usadas para cotação e etiquetas. Elas não aparecem no catálogo público.
+                </p>
+              </CardHeader>
+              <CardContent>
+                {isSuperAdmin && producers.length > 0 && (
+                  <div className="mb-6">
+                    <Label>Produtor</Label>
+                    <select
+                      value={selectedFulfillmentProducerId}
+                      onChange={(e) => setSelectedFulfillmentProducerId(e.target.value)}
+                      className="w-full h-10 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                    >
+                      {producers.map((producer) => (
+                        <option key={producer.id} value={producer.id}>{producer.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {fulfillmentForm ? (
+                  <form onSubmit={handleFulfillmentSubmit} className="space-y-5">
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <div>
+                        <Label>Responsável pela expedição *</Label>
+                        <Input
+                          value={fulfillmentForm.contactName}
+                          onChange={(e) => setFulfillmentForm({ ...fulfillmentForm, contactName: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <Label>Telefone *</Label>
+                        <Input
+                          inputMode="tel"
+                          value={fulfillmentForm.contactPhone}
+                          onChange={(e) => setFulfillmentForm({ ...fulfillmentForm, contactPhone: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <Label>E-mail operacional</Label>
+                        <Input
+                          type="email"
+                          value={fulfillmentForm.contactEmail}
+                          onChange={(e) => setFulfillmentForm({ ...fulfillmentForm, contactEmail: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <Label>CPF/CNPJ do remetente</Label>
+                        <Input
+                          inputMode="numeric"
+                          value={fulfillmentForm.taxId}
+                          onChange={(e) => setFulfillmentForm({ ...fulfillmentForm, taxId: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid sm:grid-cols-[1fr_2fr_1fr] gap-3">
+                      <div>
+                        <Label>CEP de origem *</Label>
+                        <Input
+                          inputMode="numeric"
+                          maxLength={9}
+                          value={fulfillmentForm.originPostalCode}
+                          onChange={(e) => setFulfillmentForm({ ...fulfillmentForm, originPostalCode: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <Label>Logradouro *</Label>
+                        <Input
+                          value={fulfillmentForm.originStreet}
+                          onChange={(e) => setFulfillmentForm({ ...fulfillmentForm, originStreet: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <Label>Número *</Label>
+                        <Input
+                          value={fulfillmentForm.originNumber}
+                          onChange={(e) => setFulfillmentForm({ ...fulfillmentForm, originNumber: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <div>
+                        <Label>Complemento</Label>
+                        <Input
+                          value={fulfillmentForm.originComplement}
+                          onChange={(e) => setFulfillmentForm({ ...fulfillmentForm, originComplement: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <Label>Bairro *</Label>
+                        <Input
+                          value={fulfillmentForm.originNeighborhood}
+                          onChange={(e) => setFulfillmentForm({ ...fulfillmentForm, originNeighborhood: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <Label>Cidade *</Label>
+                        <Input
+                          value={fulfillmentForm.originCity}
+                          onChange={(e) => setFulfillmentForm({ ...fulfillmentForm, originCity: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <Label>UF *</Label>
+                        <Input
+                          maxLength={2}
+                          value={fulfillmentForm.originState}
+                          onChange={(e) => setFulfillmentForm({ ...fulfillmentForm, originState: e.target.value.toUpperCase() })}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label>Instruções ou restrições especiais</Label>
+                      <Textarea
+                        rows={3}
+                        value={fulfillmentForm.specialInstructions}
+                        onChange={(e) => setFulfillmentForm({ ...fulfillmentForm, specialInstructions: e.target.value })}
+                      />
+                    </div>
+
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={fulfillmentForm.isActive}
+                        onChange={(e) => setFulfillmentForm({ ...fulfillmentForm, isActive: e.target.checked })}
+                      />
+                      <span className="text-sm">Origem habilitada para novos pedidos</span>
+                    </label>
+
+                    <Button type="submit">Salvar dados de expedição</Button>
+                  </form>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {isSuperAdmin
+                      ? "Cadastre um produtor antes de preencher a expedição."
+                      : "Sua conta ainda não possui uma loja associada."}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </main>

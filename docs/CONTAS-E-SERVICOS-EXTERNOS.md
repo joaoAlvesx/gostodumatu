@@ -124,7 +124,9 @@ A implementação fará:
 - snapshots de preços e endereços;
 - campos de peso e dimensões usados pelo frete.
 
-**A fase termina quando:** um produto tiver estoque e embalagem completos, cada item estiver ligado ao produtor correto e um pedido puder ser registrado no banco sem pagamento real.
+**Status local em 21/08/2026:** os critérios abaixo foram validados no Supabase local, sem aplicar migrations no projeto remoto e sem chamar Mercado Pago ou Melhor Envio. As credenciais externas permanecem armazenadas para as fases em que serão usadas.
+
+**A fase termina quando:** um produto tiver estoque e embalagem completos, cada item estiver ligado ao produtor correto e um pedido puder ser registrado no banco sem pagamento real. Esses critérios estão concluídos no ambiente local.
 
 <a id="contas-fase-3"></a>
 

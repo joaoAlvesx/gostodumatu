@@ -13,8 +13,9 @@
     "local:setup": "node scripts/setup-local.mjs",
     "local:reset": "npx --yes supabase@latest db reset",
     "local:stop": "npx --yes supabase@latest stop",
-    "types:local": "npx --yes supabase@latest gen types typescript --local > src/integrations/supabase/types.ts",
-    "validate:phase1": "node scripts/validate-phase1-local.mjs"
+    "types:local": "node scripts/generate-types-local.mjs",
+    "validate:phase1": "node scripts/validate-phase1-local.mjs",
+    "validate:phase2": "node scripts/validate-phase2-local.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

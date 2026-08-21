@@ -4,6 +4,8 @@ import { deleteCatalogImages } from "@/lib/storage";
 
 export { supabase };
 
+export type ProductCheckoutStatus = "draft" | "available" | "paused";
+
 export type Product = {
   id: string;
   name: string;
@@ -14,6 +16,12 @@ export type Product = {
   description: string;
   isNew?: boolean;
   producerId?: string;
+  stockQuantity: number;
+  weightGrams?: number;
+  heightCm?: number;
+  widthCm?: number;
+  lengthCm?: number;
+  checkoutStatus: ProductCheckoutStatus;
 };
 
 function normalizeImages(value: string[]): string[] {
@@ -38,6 +46,12 @@ export async function loadProducts(producerId?: string): Promise<Product[]> {
       description: product.description ?? "",
       isNew: product.is_new,
       producerId: product.producer_id ?? undefined,
+      stockQuantity: product.stock_quantity,
+      weightGrams: product.weight_grams ?? undefined,
+      heightCm: product.height_cm == null ? undefined : Number(product.height_cm),
+      widthCm: product.width_cm == null ? undefined : Number(product.width_cm),
+      lengthCm: product.length_cm == null ? undefined : Number(product.length_cm),
+      checkoutStatus: product.checkout_status,
     }));
   } catch (error) {
     console.error("Erro ao carregar produtos do Supabase:", error);
@@ -57,6 +71,12 @@ export async function saveProducts(product: Product): Promise<boolean> {
       description: product.description,
       is_new: product.isNew ?? false,
       producer_id: product.producerId ?? null,
+      stock_quantity: product.stockQuantity,
+      weight_grams: product.weightGrams ?? null,
+      height_cm: product.heightCm ?? null,
+      width_cm: product.widthCm ?? null,
+      length_cm: product.lengthCm ?? null,
+      checkout_status: product.checkoutStatus,
     } satisfies TablesInsert<"products">;
 
     const { error } = await supabase.from("products").upsert(databaseData, { onConflict: "id" });
