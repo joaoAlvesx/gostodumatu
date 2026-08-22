@@ -1,16 +1,31 @@
 project_id = "vzvbcewvdqcerogwsjeu"
 
 [auth]
-site_url = "http://127.0.0.1:8080"
-additional_redirect_urls = ["http://127.0.0.1:8080/**", "http://localhost:8080/**"]
+site_url = "https://www.gostodumatu.com.br"
+additional_redirect_urls = [
+  "https://www.gostodumatu.com.br/auth/callback",
+  "https://gostodumatu.com.br/auth/callback",
+  "https://gostudumatu.vercel.app/auth/callback",
+  "http://127.0.0.1:8080/auth/callback",
+  "http://localhost:8080/auth/callback",
+]
 
 [auth.email]
 enable_signup = true
 double_confirm_changes = true
-enable_confirmations = true
+enable_confirmations = false
+max_frequency = "1m"
+otp_length = 8
 
 [auth.rate_limit]
 email_sent = 30
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+[storage.vector]
+enabled = false
 
 [functions.create-producer]
 verify_jwt = true

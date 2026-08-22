@@ -54,7 +54,7 @@ Esse comando testa login por senha, isolamento de perfis, cadastro protegido de 
 
 No Supabase, confirme antes de testar no domínio publicado:
 
-- **Authentication > URL Configuration:** Site URL `https://gostodumatu.com.br` e `http://127.0.0.1:8080/auth/callback`, `https://gostodumatu.com.br/auth/callback` e `https://gostudumatu.vercel.app/auth/callback` na lista de redirecionamentos;
+- **Authentication > URL Configuration:** Site URL `https://www.gostodumatu.com.br` e `http://127.0.0.1:8080/auth/callback`, `http://localhost:8080/auth/callback`, `https://www.gostodumatu.com.br/auth/callback`, `https://gostodumatu.com.br/auth/callback` e `https://gostudumatu.vercel.app/auth/callback` na lista de redirecionamentos;
 - **Authentication > Providers > Email:** cadastro e confirmação de e-mail habilitados;
 - **Authentication > Providers > Google:** Client ID e Client Secret do Google cadastrados;
 - **Authentication > SMTP:** SMTP personalizado habilitado com remetente verificado no Resend.

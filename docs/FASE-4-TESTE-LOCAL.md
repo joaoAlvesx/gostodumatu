@@ -75,7 +75,7 @@ O Melhor Envio exige que a callback enviada na autorização seja idêntica à c
 Confirme em **Supabase > Edge Functions > Secrets**:
 
 ```env
-APP_URL=https://gostodumatu.com.br
+APP_URL=https://www.gostodumatu.com.br
 MELHOR_ENVIO_ENV=sandbox
 MELHOR_ENVIO_CLIENT_ID=...
 MELHOR_ENVIO_CLIENT_SECRET=...
