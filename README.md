@@ -58,8 +58,5 @@ Se você já tiver um projeto Supabase configurado, pode iniciar só o frontend:
 | `supabase/functions/` | Funções de frete, pagamento e processamento de pedidos. |
 | `docs/` | Planejamento e roteiros de validação por fase. |
 
-## Estado das integrações
-
-O código do checkout, das cotações de frete e dos pagamentos está no repositório. Os [testes da fase 5](docs/FASE-5-TESTE-LOCAL.md) usam simulações de Mercado Pago e Melhor Envio; a homologação completa com contas de teste externas ainda depende dos cenários descritos nesse guia. Para entender o fluxo e a preparação operacional, consulte [CHECKOUT.md](docs/CHECKOUT.md) e [CONTAS-E-SERVICOS-EXTERNOS.md](docs/CONTAS-E-SERVICOS-EXTERNOS.md).
 
 **Site:** [www.gostodumatu.com.br](https://www.gostodumatu.com.br/)
